@@ -8,14 +8,12 @@
 #include <arch/i386/x86.h>
 #include <arch/i386/mmu.h>
 
-#include <arch/i386/defs.h>
-
-#include <kern/console.h>
+#include <arch/i386/inc.h>
 
 struct cpu cpus[NCPU];
 struct cpu *bootcpu;
 int ismp;
-int ncpu;
+int ncpu = 1;
 
 // in ioapic.c and lapic.c
 extern uint8_t ioapicid;
@@ -84,16 +82,18 @@ struct mpioapic {		// I/O APIC table entry
 #define MPLINTR   0x04  // One per system interrupt source
 
 int 
-cpuidx() {
+cpuidx() 
+{
     return thiscpu() - cpus;
 }
 
 struct cpu *
-thiscpu() {
+thiscpu() 
+{
     int apicid = lapicid();
-    for (int i = 0; i < ncpu; i ++) 
-        if (cpus[i].apicid == apicid)
-            return &cpus[i];
+    for (struct cpu *c = cpus; c < cpus + ncpu; c ++)
+        if (c->apicid == apicid)
+            return c;
     panic("unknown apicid");
 }
 
@@ -200,7 +200,6 @@ mp_init(void)
 	uint8_t *p;
 	unsigned int i;
 
-	bootcpu = &cpus[0];
 	if ((conf = mpconfig(&mp)) == 0)
 		return;
 	ismp = 1;
@@ -210,12 +209,12 @@ mp_init(void)
 		switch (*p) {
 		case MPPROC:
 			proc = (struct mpproc *)p;
-			if (proc->flags & MPPROC_BOOT)
-				bootcpu = &cpus[ncpu];
-			if (ncpu < NCPU) 
-				cpus[ncpu++].apicid = ncpu;
+			if (proc->flags & MPPROC_BOOT) 
+                cpus[0].apicid = proc->apicid;
+            else if (ncpu < NCPU) 
+				cpus[ncpu++].apicid = proc->apicid;
             else 
-                cprintf("SMP: too many CPUs, CPU %d disabled\n", proc->apicid);
+                cprintf("SMP: too many CPUs, CPU(apicid=%d) disabled\n", proc->apicid);
 			p += sizeof(struct mpproc);
 			continue;
 		case MPBUS:
@@ -223,6 +222,7 @@ mp_init(void)
 			ioapic = (struct mpioapic *)p;
 			ioapicid = ioapic->apicno;
 			p += sizeof(struct mpioapic);
+            cprintf("SMP: Found ioapic id %d\n", ioapicid);
 			continue;
 		case MPIOINTR:
 		case MPLINTR:
@@ -235,15 +235,12 @@ mp_init(void)
 		}
 	}
 
+	bootcpu = &cpus[0];
 	bootcpu->status = CPU_STARTED;
-	if (!ismp) {
-		// Didn't like what we found; fall back to no MP.
-		ncpu = 1;
-		lapic = 0;
-		cprintf("SMP: configuration not found, SMP disabled\n");
-		return;
-	}
-	cprintf("SMP: CPU %d found %d CPU(s)\n", bootcpu->apicid,  ncpu);
+	if (!ismp) 
+        panic("SMP: configuration not found.");
+
+	cprintf("SMP: BSP(apicid=%d)found %d CPU(s)\n", bootcpu->apicid, ncpu);
 
 	if (mp->imcrp) {
 		// [MP 3.2.6.1] If the hardware implements PIC mode,

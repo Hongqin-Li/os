@@ -1,30 +1,22 @@
-#include <inc/types.h>
-#include <inc/string.h>
-#include <inc/multiboot.h>
+#include <arch/i386/inc.h>
 
-#include <arch/i386/defs.h>
-#include <arch/i386/x86.h>
-#include <arch/i386/memlayout.h>
-
-#include <kern/console.h>
-#include <kern/kalloc.h>
-#include <kern/mm/buddy.h>
-
-uint32_t PHYSTOP;
-uint32_t kend;
+static void boot_aps();
+void mp_main();
 
 void kernel_main() {
-    extern char end[];
+
     cons_init();
-    cprintf("kernel_main: %x\n", kernel_main);
-    cprintf("PHYSTOP: 0x%x\n", PHYSTOP);
-    cprintf("kernel end: 0x%x\n", kend);
 
-    //struct buddy_system *bsp = buddy_init(end, P2V(4*1024*1024));
-    //free_range(end, P2V(4*1024*1024));
-
+    mm_init();
+    mp_init();
     trap_init();
-    while(1) ;
+
+    pic_init();
+    lapic_init();
+    ioapic_init();
+
+    boot_aps();
+    while (1);
 }
 
 // While boot_aps is booting a given CPU, it communicates the per-core
@@ -33,38 +25,37 @@ void kernel_main() {
 void *mpentry_kstack;
 
 static void
-boot_aps(void)
+boot_aps()
 {
-	extern unsigned char mpentry_start[], mpentry_end[];
-	void *code;
-	struct cpu *c;
+    extern uint8_t mpentry_start[], mpentry_end[];
 
-	// Write entry code to unused memory at MPENTRY_PADDR
-	code = P2V(MPENTRY_PADDR);
-	memmove(code, mpentry_start, mpentry_end - mpentry_start);
+    // Write entry code to unused memory at MPENTRY_PADDR
+    memmove(P2V(MPENTRY_PADDR), mpentry_start, mpentry_end - mpentry_start);
 
-	// Boot each AP one at a time
-	for (c = cpus; c < cpus + ncpu; c++) {
-		if (c == cpus + cpuidx())  // We've started already.
-			continue;
-
-		// Tell mpentry.S what stack to use 
-		mpentry_kstack = percpu_kstacks[c - cpus] + KSTKSIZE;
-		// Start the CPU at mpentry_start
-		lapic_startap(c->apicid, V2P(code));
-		// Wait for the CPU to finish some basic setup in mp_main()
-		while(c->status != CPU_STARTED)
-			;
-	}
+    // Boot each AP one at a time
+    for (int i = 1; i < ncpu; i ++) {
+        // Tell mpentry.S what stack to use 
+        mpentry_kstack = percpu_kstacks[i] + KSTKSIZE;
+        // Start the CPU at mpentry_start
+        lapic_startap(cpus[i].apicid, MPENTRY_PADDR);
+        // Wait for the CPU to finish some basic setup in mp_main()
+        while(cpus[i].status != CPU_STARTED)
+            ;
+    }
+    // Clear the identical map: [0, 4MB) -> [0, 4MB)
+    // Since all CPU have been in higher half
+    entry_pgdir[0] = 0;
 }
 
 // Setup code for APs
 void
-mp_main(void)
+mp_main()
 {
-	// TODO: Your code here.
-	// You need to initialize something.
+    seg_init();
+    lapic_init();
+    idt_init();
 
+    cprintf("CPU(idx=%d, apicid=%d) initialization finished.\n", cpuidx(), thiscpu()->apicid);
 	xchg(&thiscpu()->status, CPU_STARTED); // tell boot_aps() we're up
-	for (;;);
+    while(1) ;
 }

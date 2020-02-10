@@ -29,8 +29,6 @@ alltraps:
 .globl trapret
 trapret:
 	# Restore registers.
-	# Your code here:
-
     popal
     popl %gs
     popl %fs

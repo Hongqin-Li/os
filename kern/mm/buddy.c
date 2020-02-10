@@ -54,14 +54,19 @@ buddy_stat(void *p) {
 
     int npage = 0;
     for (int i = 0; i <= maxd; i ++) {
-        cprintf("freelist[%d]: ", i);
+        int empty = 1;
         struct buddy_page *bp;
         LIST_FOREACH_ENTRY(bp, &bsp->freelist[i], list) {
             assert(bp->magic == BUDDY_MAGIC);
+            if(empty) {
+                cprintf("freelist[%d]: ", i);
+                empty = 0;
+            }
             cprintf("0x%x -> ", bp);
             npage += (1<<i);
         }
-        cprintf("\n");
+        if (!empty)
+            cprintf("\n");
     }
     cprintf("free/total npages: %d/%d\n", npage, (hdr->end - hdr->start) / PGSIZE);
     
@@ -86,7 +91,6 @@ buddy_init(void *startp, void *endp)
     }
 
     BUDDY_SYSTEM(*bsp, maxd) = startp;
-    cprintf("maxd: %d\n", maxd);
 
     // Init magic, header, bitmap and freelist
     bsp->magic = BUDDY_MAGIC;
@@ -106,7 +110,8 @@ buddy_init(void *startp, void *endp)
     first->magic = BUDDY_MAGIC;
     list_push_back(&bsp->freelist[maxd], &first->list);
 
-    buddy_test((void *)bsp);
+    buddy_stat((void *)bsp);
+    //buddy_test((void *)bsp);
     return (struct buddy_system *)bsp;
 }
 
@@ -207,6 +212,7 @@ buddy_test(struct buddy_system *hdr) {
         cprintf("size: %d\n", size);
         p[i] = buddy_alloc(hdr, size);
         if (!p[i]) break;
+        else memset(p[i], 0xff, size);
     }
     buddy_stat(hdr);
 

@@ -26,7 +26,7 @@ trap_init(void)
     int cs = SEG_SELECTOR(SEG_KCODE, 0, 0); //kernel code segment selector
 
     for (int i = 0; i < ARRAY_SIZE(idt); i ++) 
-        SETGATE(idt[i], 0, cs, vectors[i], 0);
+        SETGATE(idt[i], 0, cs, vectors[i], DPL_KERN);
 
     SETGATE(idt[T_SYSCALL], 1, cs, vectors[T_SYSCALL], DPL_USER);
 }

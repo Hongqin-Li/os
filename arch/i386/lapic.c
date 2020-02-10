@@ -123,7 +123,7 @@ void
 micro_delay(int us)
 {
     for (int i = 0; i < us; i ++) {
-        int x = 0xffff;
+        int x = 10000;
         while(x--);
     }
 }

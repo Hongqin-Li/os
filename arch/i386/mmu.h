@@ -22,9 +22,10 @@
 //  RPL = Request Privilege Level, i.e. the programmer want to use for accessing the descriptor
 
 #define SEG_SELECTOR(idx, ti, rpl) (((idx)<<3) | (((ti)&1)<<2) | ((rpl)&3))
+#define SEG_SLT(idx, ti, rpl) (((idx)<<3) | (((ti)&1)<<2) | ((rpl)&3))
 
-#define SEG_TI_GDT  0
-#define SEG_TI_LDT  1
+#define TI_GDT  0
+#define TI_LDT  1
 
 #define RPL_KERN    0
 #define RPL_USER    3

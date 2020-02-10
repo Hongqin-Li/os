@@ -13,6 +13,7 @@ SECTIONS
 	_kernel_start = .;
 	.text ALIGN (4K) : AT (ADDR (.text) - KERNBASE)
 	{
+        *(.multiboot_header)
 		*(.text)
 	}
     PROVIDE(etext = .);
