@@ -85,6 +85,7 @@ proc_alloc()
     p->magic = PROC_MAGIC;
     //p->pgdir = vm_fork(entry_pgdir);
 
+    list_init(&p->pos);
     // insert to hash table
     list_push_back(&ptable.hlist[HASH(p)], &p->hlist);
     list_init(&p->wait_list);
@@ -97,9 +98,10 @@ static void
 proc_free(struct proc *p)
 {
     assert(PROC_EXISTS(p));
+    cprintf("proc_free: %x\n", p);
     list_drop(&p->hlist);
     vm_free(p->pgdir);
-    kfree(p + sizeof(struct proc) - KSTKSIZE);
+    kfree((void *)p + sizeof(struct proc) - KSTKSIZE);
 
     assert(!list_find(&ptable.hlist[HASH(p)], &p->hlist));
     assert(!list_find(&ptable.ready_list, &p->hlist));
@@ -167,41 +169,38 @@ user_init()
     cprintf("user init finished.\n");
 }
 
+// Switch to process p
+// Call should hold ptable.lock
+void
+swtchp(struct proc *p)
+{   
+    struct proc *tp = thisproc();
+    vm_switch(p->pgdir);
+    thiscpu()->proc = p;
+    cprintf("swtchp: cpu %d, %x -> %x\n", cpuidx(), tp, p);
+    swtch(&tp->context, p->context);
+    thiscpu()->proc = tp;
+    vm_switch(tp->pgdir);
+}
+
+
 void
 scheduler() {
+    // Init the scheduler process
+    thiscpu()->scheduler.pgdir = entry_pgdir;
+    thiscpu()->proc = &thiscpu()->scheduler;
+
     while(1) {
         spinlock_acquire(&ptable.lock);
-
         if (!list_empty(&ptable.ready_list)) {
-
-            struct list_head *i = list_front(&ptable.ready_list);
-            list_drop(i);
-            struct proc *p = CONTAINER_OF(i, struct proc, pos);
-            assert(PROC_EXISTS(p));
-
-            uvm_switch(p);
-            thiscpu()->proc = p;
-
-            cprintf("cpuidx %d get proc %x\n", cpuidx(), p);
-            swtch(&thiscpu()->scheduler, p->context);
-            cprintf("cpuidx %d in scheduler\n", cpuidx());
-
-            thiscpu()->proc = 0;
-            vm_switch(entry_pgdir);
+            struct proc *p = CONTAINER_OF(list_front(&ptable.ready_list), struct proc, pos);
+            list_drop(&p->pos);
+            swtchp(p);
         }
-
         spinlock_release(&ptable.lock);
     }
 }
 
-// Context switch from thisproc to scheduler.
-// Caller should hold ptable.lock
-void
-sched() 
-{
-    swtch(&thisproc()->context, thiscpu()->scheduler);
-}
- 
 int
 fork()
 {
@@ -219,25 +218,35 @@ fork()
     return (int)p;
 }
 
-// Sleep and wait for process p
-// Reap all ZOMBIE process first
-// Caller should hold ptable.lock
-// Return 0 if success else -1
-int 
-wait(struct proc *p)
+// Free all zombie proc.
+// Caller should hold ptable.lock.
+void
+reap()
 {
     while(!list_empty(&ptable.zombie_list)) {
         struct proc *zp = CONTAINER_OF(list_front(&ptable.zombie_list), struct proc, pos);
         list_drop(&zp->pos);
         proc_free(zp);
     }
+}
 
+// Sleep and wait for process p
+// Reap all ZOMBIE process first
+// Caller should hold ptable.lock
+// Return 0 if success else -1
+int 
+yield(struct proc *p)
+{
+    struct proc *tp = thisproc();
+    reap();
     if (PROC_EXISTS(p)) {
-        list_push_back(&p->wait_list, &thisproc()->pos);
-        sched();
+        // If the server is idle, directly switch to it.
+        int dswtch = list_empty(&p->pos);
+        list_push_back(&p->wait_list, &tp->pos);
+        swtchp(dswtch ? p : &thiscpu()->scheduler);
         return 0;
     }
-    cprintf("wait: proc not exists or zombie\n");
+    cprintf("yield: cpu %d, %x yield to invalid proc %x\n", cpuidx(), tp, p);
     return -1;
 }
 
@@ -248,8 +257,9 @@ serve()
 {
     struct proc *tp = thisproc();
     while(list_empty(&tp->wait_list)) {
-        list_push_back(&ptable.ready_list, &tp->pos);
-        sched();
+        // proc can only be idle here
+        list_init(&tp->pos);
+        swtchp(&thiscpu()->scheduler);
     }
     struct proc *p = CONTAINER_OF(list_front(&tp->wait_list), struct proc, pos);
     assert(PROC_EXISTS(p));
@@ -261,20 +271,24 @@ serve()
 void
 exit() 
 {
-    struct proc *p = thisproc();
+    struct proc *tp = thisproc();
 
     spinlock_acquire(&ptable.lock);
-    assert(PROC_EXISTS(p));
+    assert(PROC_EXISTS(tp));
 
     // Remove waiters
-    while(!list_empty(&p->wait_list)) 
-        list_drop(list_front(&p->wait_list));
+    while(!list_empty(&tp->wait_list)) {
+        struct proc *wp = CONTAINER_OF(list_front(&tp->wait_list), struct proc, pos);
+        list_drop(&wp->pos);
+        list_push_back(&ptable.ready_list, &wp->pos);
+    }
 
-    list_push_back(&ptable.zombie_list, &p->pos);
-
-    cprintf("exit: proc 0x%x exit.\n", p);
+    cprintf("exit: proc 0x%x exit.\n", tp);
     proc_stat();
-    sched();
+
+    list_push_back(&ptable.zombie_list, &tp->pos);
+    swtchp(&thiscpu()->scheduler);
+
     panic("exit: return\n");
 }
 

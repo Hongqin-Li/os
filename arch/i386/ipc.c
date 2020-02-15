@@ -1,13 +1,13 @@
-
 #include <arch/i386/inc.h>
 
 int 
 sendi(struct proc *p, int i)
 {
+    cprintf("sendi: %x to %x\n", thisproc(), p);
     spinlock_acquire(&ptable.lock);
     struct proc *tp = thisproc();
     tp->msgi = i;
-    int err = wait(p);
+    int err = yield(p);
     spinlock_release(&ptable.lock);
 
     if (err)

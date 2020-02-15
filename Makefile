@@ -28,8 +28,10 @@ all: $(IMG)
 
 ##### User C Library
 LIBC_A := $(BUILD_DIR)/libc/libc.a
-$(LIBC_A): 
+$(LIBC_A): FORCE
 	make -C libc
+FORCE:
+# https://www.gnu.org/software/make/manual/html_node/Force-Targets.html
 
 ##### Kernel ELF Start
 

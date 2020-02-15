@@ -55,12 +55,12 @@ yield() {
 
 int
 sendi(int pid, int i) {
-    return syscall(SYS_sendi, pid, i, 0, 0, 0, 0);
+    return syscall(SYS_sendi, 0, pid, i, 0, 0, 0);
 }
 
 int
 recvi() {
-    return syscall(SYS_sendi, 0, 0, 0, 0, 0, 0);
+    return syscall(SYS_recvi, 0, 0, 0, 0, 0, 0);
 }
 
 

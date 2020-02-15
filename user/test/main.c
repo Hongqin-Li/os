@@ -5,7 +5,7 @@ extern void test_ipc();
 void
 umain(int argc, char **argv) 
 {
-    test_fork();
-    //test_ipc();
+    //test_fork();
+    test_ipc();
 }
 

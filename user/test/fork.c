@@ -21,5 +21,6 @@ test_fork()
         }
         else cprintf("in parent: child pid %x\n", pid);
     }
+    cprintf("##### test fork end\n");
     //exit();
 }

@@ -2,6 +2,7 @@
 
 void mp_main();
 static void boot_aps();
+static int finish;
 
 void kernel_main() {
 
@@ -54,6 +55,7 @@ boot_aps()
     // Clear the identical map: [0, 4MB) -> [0, 4MB)
     // Since all CPU have been in higher half
     entry_pgdir[0] = 0;
+	xchg(&finish, 1);
 }
 
 // Setup code for APs
@@ -66,5 +68,7 @@ mp_main()
 
     cprintf("CPU(idx=%d, apicid=%d) initialization finished.\n", cpuidx(), thiscpu()->apicid);
 	xchg(&thiscpu()->status, CPU_STARTED); // tell boot_aps() we're up
+    while(!finish)
+        ;
     scheduler();
 }

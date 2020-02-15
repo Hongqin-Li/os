@@ -17,6 +17,7 @@ void test_ipc() {
         }
     }
     for (int i = 0; i < nchild; i ++) {
+        cprintf("cid[%d]: %x\n", i, cid[i]);
         sendi(cid[i], i + 1);
         //cprintf("parent send i: %d\n", i);
     }

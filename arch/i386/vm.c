@@ -1,4 +1,4 @@
-// Virtual Memory
+// Virtual Memory and X86's Segmentation
 #include <arch/i386/inc.h>
 
 // Set up GDT for this CPU
@@ -15,6 +15,24 @@ seg_init()
     extern void loadgdt(void *, int);// in entry.S
     loadgdt(c->gdt, sizeof(c->gdt) - 1);
     //lgdt(c->gdt, sizeof(c->gdt));
+}
+
+// Prepare TSS for this process.
+void
+tss_init()
+{
+    struct proc *p = thisproc();
+    thiscpu()->gdt[SEG_TSS] = SEGTSS(&thiscpu()->ts, sizeof(thiscpu()->ts) - 1, 0);
+    thiscpu()->ts.esp0 = (uint32_t)p;
+    thiscpu()->ts.ss0 = SEG_SELECTOR(SEG_KDATA, TI_GDT, RPL_KERN);
+
+    // setting IOPL=0 in eflags *and* iomb beyond the tss segment limit
+    // forbids I/O instructions (e.g., inb and outb) from user space
+    thiscpu()->ts.iomb = (uint16_t) 0xFFFF;
+    assert(p->magic == PROC_MAGIC);
+
+    ltr(SEG_TSS << 3);
+    //lcr3(V2P(p->pgdir));
 }
 
 // Given 'pgdir', a pointer to a page directory, pgdir_walk returns
@@ -118,24 +136,6 @@ vm_free(pde_t *pgdir)
         }
     }
     kfree(pgdir);
-}
-
-// Switch TSS and h/w page table to correspond to process p.
-// Interrupt should be closed here.
-void
-uvm_switch(struct proc *p)
-{
-    thiscpu()->gdt[SEG_TSS] = SEGTSS(&thiscpu()->ts, sizeof(thiscpu()->ts) - 1, 0);
-    thiscpu()->ts.esp0 = (uint32_t)p;
-    thiscpu()->ts.ss0 = SEG_SELECTOR(SEG_KDATA, TI_GDT, RPL_KERN);
-
-    // setting IOPL=0 in eflags *and* iomb beyond the tss segment limit
-    // forbids I/O instructions (e.g., inb and outb) from user space
-    thiscpu()->ts.iomb = (uint16_t) 0xFFFF;
-    assert(p->magic == PROC_MAGIC);
-
-    ltr(SEG_TSS << 3);
-    lcr3(V2P(p->pgdir));
 }
 
 // Check that the user has permission to read memory [s, s+len).

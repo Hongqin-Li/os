@@ -12,6 +12,29 @@
 #include <kern/console.h>
 #include <kern/locks.h>
 
+#define PROC_MAGIC 0xabcdcccc
+//enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, WAITING, ZOMBIE };
+struct proc {
+    int magic;
+    pde_t *pgdir;
+
+    struct list_head hlist;
+    struct list_head wait_list;
+    struct list_head pos;       // Scheduled by whom, either empty
+                                // or in ready_list, or in zombie_list
+    int msgi;
+    struct context *context;    // Value of the kernel stack pointer
+    struct trapframe *tf;
+};
+
+#define PROC_BUCKET_SIZE     769
+struct ptable {
+    struct spinlock lock;
+    struct list_head hlist[PROC_BUCKET_SIZE];    // Hash Map of all proc
+    struct list_head ready_list;            // list of runnable proc 
+    struct list_head zombie_list;           // list of zombie proc
+};
+
 // Maximum number of CPUs
 #define NCPU  8
 
@@ -22,7 +45,7 @@ enum { CPU_UNUSED = 0, CPU_STARTED, CPU_HALTED,};
 struct cpu {
 	uint8_t apicid;                 // Local APIC ID
 	volatile unsigned status;       // The status of the CPU
-	struct context *scheduler;		// swtch() here to enter scheduler
+	struct proc scheduler;         // swtchp() here to enter scheduler
 	struct taskstate ts;            // Used by x86 to find stack for interrupt
 	struct segdesc gdt[NSEGS];      // x86 global descriptor table
 	struct proc *proc;              // The process running on this cpu or null
@@ -63,13 +86,14 @@ void    idt_init();
 extern pde_t entry_pgdir[NPDENTRIES];
 void test_pgdir(pde_t *pgdir);
 void seg_init();
+void tss_init();
 pte_t *pgdir_walk(pde_t *pgdir, const void *va, int32_t alloc);
 pde_t *vm_fork(pde_t *pgdir);
 void vm_alloc(pde_t *pgdir, uint32_t va, uint32_t len);
 void vm_free(pde_t *pgdir);
 void vm_switch(pde_t *pgdir);
-void uvm_switch(struct proc *p);
 int uvm_check(pde_t *pgdir, char *s, uint32_t len);
+
 
 // mm.c
 extern void *PHYSTOP; // maximum physical memory address(pa)
@@ -79,27 +103,6 @@ void *kalloc(size_t);
 void kfree(void *);
 
 // proc.c
-#define PROC_MAGIC 0xabcdcccc
-//enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, WAITING, ZOMBIE };
-struct proc {
-    int magic;
-    pde_t *pgdir;
-    struct list_head hlist;
-    struct list_head wait_list;
-    struct list_head pos;       // Scheduled by whom
-
-    int msgi;
-    struct context *context;    // Value of the kernel stack pointer
-    struct trapframe *tf;
-};
-
-#define PROC_BUCKET_SIZE     769
-struct ptable {
-    struct spinlock lock;
-    struct list_head hlist[PROC_BUCKET_SIZE];    // Hash Map of all proc
-    struct list_head ready_list;            // list of runnable proc 
-    struct list_head zombie_list;           // list of zombie proc
-};
 extern struct ptable ptable;
 struct proc *thisproc();
 void proc_init();
@@ -109,7 +112,7 @@ void scheduler();
 void exit();
 int fork();
 
-int wait(struct proc *);
+int yield(struct proc *);
 struct proc *serve();
 
 // ipc.c
