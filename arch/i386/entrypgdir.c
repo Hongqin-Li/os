@@ -1,5 +1,5 @@
-#include <arch/i386/mmu.h>
-#include <arch/i386/memlayout.h>
+#include <mmu.h>
+#include <memlayout.h>
 
 pte_t entry_pgtable[NPTENTRIES];
 
@@ -23,8 +23,7 @@ pde_t entry_pgdir[NPDENTRIES] = {
 	[0]
 		= ((uint32_t)entry_pgtable - KERNBASE) + PTE_P,
 	// Map VA's [KERNBASE, KERNBASE+4MB) to PA's [0, 4MB)
-	[KERNBASE>>PDXSHIFT]
-		= ((uint32_t)entry_pgtable - KERNBASE) + PTE_P + PTE_W
+	//[KERNBASE>>PDXSHIFT] = ((uint32_t)entry_pgtable - KERNBASE) + PTE_P + PTE_W
 };
 
 // Entry 0 of the page table maps to physical page 0, entry 1 to

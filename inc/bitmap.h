@@ -1,7 +1,7 @@
 #ifndef INC_BITMAP_H
 #define INC_BITMAP_H
 
-#include <inc/types.h>
+#include <types.h>
 
 #define BITMAP(name, bits) uint32_t name[ROUNDUP(bits, 32)/32]
 

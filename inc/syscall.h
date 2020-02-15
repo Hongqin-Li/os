@@ -1,13 +1,22 @@
 #ifndef INC_SYSCALL_H
 #define INC_SYSCALL_H
 
+#define T_SYSCALL   64
+
 /* system call numbers */
 enum {
+    // Debug
 	SYS_cputs = 0,
 	SYS_cgetc,
+
+    // Process
 	SYS_exit,
     SYS_yield, 
     SYS_fork,
+
+    // IPC
+    SYS_sendi,
+    SYS_recvi,
 
     SYS_open,
     SYS_close,

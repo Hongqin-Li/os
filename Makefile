@@ -10,19 +10,26 @@ CC += -fno-pie -fno-pic -fno-stack-protector
 CC += -static -fno-builtin -nostdlib
 CC += -Wl,--build-id=none
 
+LD := ld -m elf_i386
+
 # FIXME: build with different target architecture
 ARCH_DIR := ./arch/i386
 KERN_DIR := ./kern
 
 SRC_DIRS := $(ARCH_DIR) $(KERN_DIR)
-BUILD_DIR := ./obj
+BUILD_DIR = obj
 
 KERN_ELF := $(BUILD_DIR)/kernel.o
 IMG := $(BUILD_DIR)/sos.iso
 
-GRUB_CFG := menuentry "sos" { multiboot /boot/$(notdir $(KERN_ELF)) }
+GRUB_CFG := menuentry "sos" { multiboot2 /boot/$(notdir $(KERN_ELF)) }
 
 all: $(IMG)
+
+##### User C Library
+LIBC_A := $(BUILD_DIR)/libc/libc.a
+$(LIBC_A): 
+	make -C libc
 
 ##### Kernel ELF Start
 
@@ -35,7 +42,8 @@ DEPS := $(OBJS:.o=.d)
 INC_DIRS := $(shell find $(SRC_DIRS) -type d)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
-CC += -I. $(INC_FLAGS) -MMD -MP
+# CC += -I. $(INC_FLAGS) -MMD -MP
+CC += -I. -Iarch/i386 -Iinc -MMD -MP
 
 $(BUILD_DIR)/%.c.o: %.c
 	mkdir -p $(dir $@)
@@ -44,9 +52,21 @@ $(BUILD_DIR)/%.S.o: %.S
 	mkdir -p $(dir $@)
 	$(CC) -c -o $@ $<
 
-$(KERN_ELF): $(ARCH_DIR)/linker.ld $(OBJS)
-	$(CC) -o $@ -T $< $(OBJS)
-	objdump -S -D $@ > $(dir $@)/kernel.asm
+##### User ELFs
+USER_DIRS := $(shell find user/ -maxdepth 1 -mindepth 1 -type d)
+USER_ELFS := $(USER_DIRS:%=$(BUILD_DIR)/%.elf)
+GCC_LIB := $(shell $(CC) $(CFLAGS) -print-libgcc-file-name)
+
+.SECONDEXPANSION:
+# link gcc library to support int64_t division operation
+$(BUILD_DIR)/user/%.elf: $(LIBC_A) $$(addsuffix .o,$$(addprefix $(BUILD_DIR)/,$$(shell find user/% -name "*.c")))
+	$(CC) -I. -T user/user.ld -o $@ user/entry.S $^ $(GCC_LIB)
+	objdump -S -D $@ > $(basename $@).asm
+
+$(KERN_ELF): $(ARCH_DIR)/linker.ld $(OBJS) $(USER_ELFS)
+	# $(CC) -o $@ -T $< $(OBJS) 
+	$(LD) -o $@ -T $< $(OBJS) -b binary $(USER_ELFS)
+	objdump -S -D $@ > $(basename $@).asm
 
 $(IMG): $(KERN_ELF)
 	mkdir -p sysroot/boot/grub
@@ -54,18 +74,19 @@ $(IMG): $(KERN_ELF)
 	echo $(GRUB_CFG) > sysroot/boot/grub/grub.cfg
 	grub-mkrescue -o $@ sysroot
 
+
 # Hardware
 RAM := 4 # MB
 NCPU := 4
 
-qemu: $(KERN_ELF) 
-	qemu-system-i386 -kernel $< -serial mon:stdio -m $(RAM) -smp $(NCPU)
-qemu-nox: $(KERN_ELF) 
-	qemu-system-i386 -kernel $< -serial mon:stdio -m $(RAM) -smp $(NCPU) -nographic
+qemu: $(IMG) 
+	qemu-system-i386 -cdrom $< -serial mon:stdio -m $(RAM) -smp $(NCPU)
+qemu-nox: $(IMG) 
+	qemu-system-i386 -cdrom $< -serial mon:stdio -m $(RAM) -smp $(NCPU) -nographic
 qemu-img: $(IMG)
 	qemu-system-i386 -cdrom $< -serial mon:stdio -m $(RAM) -smp $(NCPU)
-qemu-gdb: $(KERN_ELF)
-	qemu-system-i386 -kernel $< -serial mon:stdio -m $(RAM) -smp $(NCPU) -S -gdb tcp::1234
+qemu-gdb: $(IMG)
+	qemu-system-i386 -cdrom $< -serial mon:stdio -m $(RAM) -smp $(NCPU) -S -gdb tcp::1234
 gdb: 
 	gdb -n -x .gdbinit
 

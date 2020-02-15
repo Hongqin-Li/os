@@ -16,7 +16,7 @@
 // Physical address of startup code for non-boot CPUs (APs)
 #define MPENTRY_PADDR	0x7000
 
-#define V2P(a) (((uint) (a)) - KERNBASE)
+#define V2P(a) (((uint32_t) (a)) - KERNBASE)
 #define P2V(a) ((void *)(((char *) (a)) + KERNBASE))
 
 #define V2P_WO(x) ((x) - KERNBASE)    // same as V2P, but without casts

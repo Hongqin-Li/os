@@ -2,13 +2,13 @@
 // See Chapter 8 & Appendix C of Intel processor manual volume 3.
 
 #include <inc/types.h>
-
-#include <arch/i386/memlayout.h>
-#include <arch/i386/traps.h>
-#include <arch/i386/mmu.h>
-#include <arch/i386/x86.h>
-
 #include <kern/console.h>
+
+#include <memlayout.h>
+#include <traps.h>
+#include <mmu.h>
+#include <x86.h>
+
 
 // Local APIC registers, divided by 4 for use as uint[] indices.
 #define ID      (0x0020/4)   // ID
@@ -43,7 +43,7 @@
 #define TCCR    (0x0390/4)   // Timer Current Count
 #define TDCR    (0x03E0/4)   // Timer Divide Configuration
 
-volatile uint32_t *lapic;  // Initialized in mp.c
+volatile uint32_t *lapic;  // Initialized in acpi.c
 
 static void
 lapicw(int index, int value)

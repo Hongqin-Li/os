@@ -1,22 +1,30 @@
 #include <arch/i386/inc.h>
 
-static void boot_aps();
 void mp_main();
+static void boot_aps();
 
 void kernel_main() {
 
     cons_init();
+    test_pgdir(entry_pgdir);
 
     mm_init();
-    mp_init();
+    acpi_init();
     trap_init();
+
+    seg_init(); // GDT
+    idt_init(); // IDT
 
     pic_init();
     lapic_init();
     ioapic_init();
 
+    proc_init();
+
     boot_aps();
-    while (1);
+    user_init();
+
+    scheduler();
 }
 
 // While boot_aps is booting a given CPU, it communicates the per-core
@@ -33,7 +41,8 @@ boot_aps()
     memmove(P2V(MPENTRY_PADDR), mpentry_start, mpentry_end - mpentry_start);
 
     // Boot each AP one at a time
-    for (int i = 1; i < ncpu; i ++) {
+    for (int i = 0; i < ncpu; i ++) {
+        if (i == cpuidx()) continue;
         // Tell mpentry.S what stack to use 
         mpentry_kstack = percpu_kstacks[i] + KSTKSIZE;
         // Start the CPU at mpentry_start
@@ -57,5 +66,5 @@ mp_main()
 
     cprintf("CPU(idx=%d, apicid=%d) initialization finished.\n", cpuidx(), thiscpu()->apicid);
 	xchg(&thiscpu()->status, CPU_STARTED); // tell boot_aps() we're up
-    while(1) ;
+    scheduler();
 }

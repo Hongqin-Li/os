@@ -74,6 +74,16 @@ list_pop_back(struct list_head *head)
     list_drop(list_back(head));
 }
 
+static inline struct list_head *
+list_find(struct list_head *head, struct list_head *item)
+{
+    for (struct list_head *p = head->next; p != head; p = p->next) {
+        if (p == item) 
+            return item;
+    }
+    return 0;
+}
+
 #define LIST_FOREACH_ENTRY(pos, head, member) \
     for(pos = CONTAINER_OF(list_front(head), typeof(*pos), member); \
         &pos->member != (head); \

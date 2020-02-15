@@ -1,8 +1,9 @@
-#include <arch/i386/mmu.h>
+#include <mmu.h>
 
 # vectors.S sends all traps here.
 .globl alltraps
 alltraps:
+    cli
 
     # 1. Build up trap frame
     pushl %ds
@@ -36,6 +37,8 @@ trapret:
     popl %ds
 
     addl $8, %esp
-    # Since we have push two argument in vector.S
-
+    # Pop error code and trapno
+    # iret don't know what the current trap is,
+    # thus won't pop those for us
+    sti
 	iret

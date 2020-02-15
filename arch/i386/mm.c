@@ -1,10 +1,17 @@
 // Physical memory allocator based on buddy system
 #include <kern/console.h>
 #include <kern/mm/buddy.h>
-#include <arch/i386/memlayout.h>
+#include <kern/locks.h>
+#include <memlayout.h>
 
 void *PHYSTOP, *kend;
 static struct buddy_system *bsp;
+static struct spinlock memlock;
+
+//#define DEBUG
+
+#define MAXN  200
+static void *pool[MAXN];
 
 void
 mm_init() 
@@ -14,17 +21,53 @@ mm_init()
     bsp = buddy_init(kend, P2V(PHYSTOP));
 }
 
-// Free the physical memory pointed at by v.
-void
-kfree(void *va)
-{
-    buddy_free(bsp, va);
-}
-
 // Allocate sz size of physical memory.
 // Returns 0 if failed else a pointer.
 void *
 kalloc(size_t sz)
 {
-    buddy_alloc(bsp, sz);
+    spinlock_acquire(&memlock);
+    void *p = buddy_alloc(bsp, sz);
+
+    #ifdef DEBUG
+    assert(p);
+    int alloc = 0;
+    for (int i = 0; i < MAXN; i ++) {
+        if (!pool[i]) {
+            pool[i] = p;
+            alloc = 1;
+            break;
+        }
+    }
+    assert(alloc);
+    cprintf("kalloc: p: 0x%x, sz: %d\n", p, sz);
+    #endif
+
+    spinlock_release(&memlock);
+    return p;
 }
+
+// Free the physical memory pointed at by v.
+void
+kfree(void *va)
+{
+    spinlock_acquire(&memlock);
+
+    #ifdef DEBUG
+    int valid = 0;
+    for (int i = 0; i < MAXN; i ++) {
+        if (pool[i] == va) {
+            valid = 1;
+            pool[i] = 0;
+            break;
+        }
+    }
+    assert(valid);
+    cprintf("kfree: va: 0x%x\n", va);
+    #endif
+
+    buddy_free(bsp, va);
+    spinlock_release(&memlock);
+}
+
+

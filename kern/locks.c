@@ -1,5 +1,6 @@
 #include <inc/types.h>
 #include <kern/locks.h>
+#include <kern/console.h>
 
 void 
 spinlock_acquire(struct spinlock *lk) {
@@ -9,6 +10,8 @@ spinlock_acquire(struct spinlock *lk) {
 
 void 
 spinlock_release(struct spinlock *lk) {
+    if (!lk->locked)
+        panic("spinlock_release: not locked\n");
     __sync_lock_test_and_set(&lk->locked, 0);
 }
 

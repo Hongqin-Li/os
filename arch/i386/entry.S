@@ -2,40 +2,20 @@
 
 #include <arch/i386/mmu.h>
 #include <arch/i386/memlayout.h>
-#include <inc/multiboot.h>
 
-#define	RELOC(x) ((x) - KERNBASE)
-
-#define MULTIBOOT_HEADER_FLAGS (MULTIBOOT_PAGE_ALIGN|MULTIBOOT_MEMORY_INFO)
-#define CHECKSUM (-(MULTIBOOT_HEADER_MAGIC + MULTIBOOT_HEADER_FLAGS))
-
-.section .multiboot_header
-.align MULTIBOOT_HEADER_ALIGN
-.long MULTIBOOT_HEADER_MAGIC
-.long MULTIBOOT_HEADER_FLAGS
-.long CHECKSUM
+#define RELOC(x) ((x)-KERNBASE)
 
 .text
 # '_start' specifies the ELF entry point.  
 .globl		_start
 _start:
+	mov     $(RELOC(bootstack+KSTKSIZE)), %esp
+    push    %ebx
+    push    %eax  
+    call    multiboot_init
 
-    # Check magic and fetch memory info
-    cmp     $MULTIBOOT_BOOTLOADER_MAGIC, %eax
-    jne     spin
-    # PHYSTOP = 1M + (mbt->mem_upper)K
-    mov     8(%ebx), %eax
-    shl     $10, %eax
-    add     $0x100000, %eax
-    movl    %eax, RELOC(PHYSTOP)
-    movl    $0x800000, RELOC(PHYSTOP)
     # kend = end
     movl    $end, RELOC(kend)
-
-	# mov     $(RELOC(bootstack+KSTKSIZE)), %esp
-    # push    %ebx
-    # push    %eax
-    # call    mb_init
 
     # We have hard-coded a page table with an 
     # indentical map: [0, 4MB) -> [0, 4MB)
@@ -67,6 +47,7 @@ map1:
     mov     $(KERNBASE>>PDXSHIFT), REG_PDX
     mov     $0, REG_PA
     mov     RELOC(PHYSTOP), REG_PA_END
+    mov     $RELOC(DEVSPACE), REG_PA_END
     jmp     loop
 map2:
     mov     $(DEVSPACE>>PDXSHIFT), REG_PDX

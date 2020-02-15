@@ -2,8 +2,6 @@
 // Input is from the keyboard or serial port.
 // Output is written to the screen and serial port.
 
-#include <arch/i386/x86.h>
-#include <arch/i386/memlayout.h>
 
 #include <inc/types.h>
 #include <inc/string.h>
@@ -11,10 +9,13 @@
 #include <kern/locks.h>
 #include <kern/console.h>
 
+#include <x86.h>
+#include <memlayout.h>
+
 static struct spinlock console_lock;
 
 #define CRTPORT 0x3d4
-static ushort *crt = (ushort*)P2V(0xb8000);  // CGA memory
+static uint16_t *crt = (uint16_t *)P2V(0xb8000);  // CGA memory
 
 // Intel 8250 serial port (UART).
 #define COM1    0x3f8

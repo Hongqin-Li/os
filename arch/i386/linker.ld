@@ -1,3 +1,5 @@
+OUTPUT_FORMAT("elf32-i386", "elf32-i386", "elf32-i386")
+OUTPUT_ARCH(i386)
 ENTRY (_start)
 
 KERNLINK = 0xF0100000;
@@ -13,7 +15,7 @@ SECTIONS
 	_kernel_start = .;
 	.text ALIGN (4K) : AT (ADDR (.text) - KERNBASE)
 	{
-        *(.multiboot_header)
+        *(.multiboot)
 		*(.text)
 	}
     PROVIDE(etext = .);

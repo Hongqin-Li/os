@@ -17,6 +17,36 @@ seg_init()
     //lgdt(c->gdt, sizeof(c->gdt));
 }
 
+// Given 'pgdir', a pointer to a page directory, pgdir_walk returns
+// a pointer to the page table entry (PTE) for linear address 'va'.
+// This requires walking the two-level page table structure.
+//
+// The relevant page table page might not exist yet.
+// If this is true, and alloc == false, then pgdir_walk returns NULL.
+// Otherwise, pgdir_walk allocates a new page table page with kalloc.
+// 		- If the allocation fails, pgdir_walk returns NULL.
+// 		- Otherwise, the new page is cleared, and pgdir_walk returns
+//        a pointer into the new page table page.
+pte_t *
+pgdir_walk(pde_t *pgdir, const void *va, int32_t alloc)
+{
+    assert(pgdir);
+    pde_t *pde_p = &pgdir[PDX(va)];
+    pte_t *pgt;
+    if (*pde_p & PTE_P) 
+        pgt = (pte_t *)P2V(PTE_ADDR(*pde_p));
+    else if (!alloc) 
+        return 0;
+    else if ((pgt = (pte_t *)kalloc(PGSIZE)) == 0)
+        return 0;
+    else {
+        memset(pgt, 0, PGSIZE);
+        *pde_p = V2P(pgt) | PTE_P | PTE_W | PTE_U;
+    }
+    return &pgt[PTX(va)];
+}
+
+
 // Switch h/w page table register to the page table.
 void
 vm_switch(pde_t *pgdir)
@@ -24,26 +54,25 @@ vm_switch(pde_t *pgdir)
     lcr3(V2P(pgdir));
 }
 
-// Map va -> pa with permssion.
-// Only user-space va is allowed.
+// Map len bytes beginning at virtual address va 
 void
-vm_map(pde_t *pgdir, uint32_t va, uint32_t pa, int perm)
+vm_alloc(pde_t *pgdir, uint32_t va, uint32_t len)
 {
+    uint32_t ve;
     va = ROUNDDOWN(va, PGSIZE);
-    pa = ROUNDDOWN(pa, PGSIZE);
+    ve = ROUNDDOWN(va + len - 1, PGSIZE);
+    assert(va <= ve);
 
-    assert(va < KERNBASE);
+    while (1) {
+        assert(va < KERNBASE);
 
-    pde_t *pde = &pgdir[PDX(va)];
-    if (!(*pde & PTE_P)) {
-        pte_t *pgt = kalloc(PGSIZE);
-        memset(pgt, 0, PGSIZE);
-        *pde = V2P(pgt) | PTE_P | PTE_W | PTE_U;
+        pte_t *pte = pgdir_walk(pgdir, (void *)va, 1);
+        if (!(*pte & PTE_P)) 
+            *pte = V2P(kalloc(PGSIZE)) | PTE_P | PTE_U | PTE_W;
+        if (va == ve) 
+            break;
+        va += PGSIZE;
     }
-    pte_t *pgt = P2V(PTE_ADDR(*pde));
-    pte_t *pte = &pgt[PTX(va)];
-    assert(!(*pte & PTE_P));// Remap is not allowed.
-    *pte = pa | PTE_P | PTE_U | perm;
 }
 
 // Copy and allocate a new page table 
@@ -56,8 +85,15 @@ vm_fork(pde_t *opgdir)
     pde_t *pde = pgdir, *opde = opgdir;
     for (; opde < opgdir + PDX(KERNBASE); opde ++, pde ++) {
         if (*opde & PTE_P) {
-            pte_t *pgt = kalloc(PGSIZE);
-            memmove(pgt, P2V(PTE_ADDR(*opde)), PGSIZE);
+            pte_t *pgt = kalloc(PGSIZE), *opgt = P2V(PTE_ADDR(*opde));
+            for (int i = 0; i < NPDENTRIES; i ++) {
+                if (opgt[i] & PTE_P) {
+                    void *p = kalloc(PGSIZE);
+                    memmove(p, P2V(PTE_ADDR(opgt[i])), PGSIZE);
+                    pgt[i] = V2P(p) | PTE_FLAGS(opgt[i]);
+                }
+                else pgt[i] = 0;
+            }
             *pde = V2P(pgt) | PTE_FLAGS(*opde);
         }
         else
@@ -84,12 +120,45 @@ vm_free(pde_t *pgdir)
     kfree(pgdir);
 }
 
+// Switch TSS and h/w page table to correspond to process p.
+// Interrupt should be closed here.
+void
+uvm_switch(struct proc *p)
+{
+    thiscpu()->gdt[SEG_TSS] = SEGTSS(&thiscpu()->ts, sizeof(thiscpu()->ts) - 1, 0);
+    thiscpu()->ts.esp0 = (uint32_t)p;
+    thiscpu()->ts.ss0 = SEG_SELECTOR(SEG_KDATA, TI_GDT, RPL_KERN);
+
+    // setting IOPL=0 in eflags *and* iomb beyond the tss segment limit
+    // forbids I/O instructions (e.g., inb and outb) from user space
+    thiscpu()->ts.iomb = (uint16_t) 0xFFFF;
+    assert(p->magic == PROC_MAGIC);
+
+    ltr(SEG_TSS << 3);
+    lcr3(V2P(p->pgdir));
+}
+
+// Check that the user has permission to read memory [s, s+len).
+// Return 0 if not else 1.
+int 
+uvm_check(pde_t *pgdir, char *s, uint32_t len)
+{
+
+    uint32_t va = ROUNDDOWN((uint32_t)s, PGSIZE);
+    uint32_t ve = ROUNDDOWN((uint32_t)s + len - 1, PGSIZE);
+    for (uint32_t p = va; p <= ve; p += PGSIZE) {
+        if (p >= KERNBASE || !pgdir_walk(pgdir, (void *)p, 0)) {
+            cprintf("user has no permission to 0x%x\n", p);
+            return 0;
+        }
+    }
+    return 1;
+}
+
 void 
 vm_test()
 {
     pde_t *pgdir = vm_fork(entry_pgdir);
-    test_pgdir(pgdir);
-    vm_map(pgdir, 0xf00000, 0, 0);
     test_pgdir(pgdir);
 }
 
@@ -114,7 +183,7 @@ test_pgdir(pde_t *pgdir) {
             num_pgt ++;
 
             pte_t *pgt = P2V(PTE_ADDR(pgdir[i]));
-            cprintf("page table: [0x%x, 0x%x)\n", pgt, (uint32_t)pgt+PGSIZE);
+            //cprintf("page table: [0x%x, 0x%x)\n", pgt, (uint32_t)pgt+PGSIZE);
 
             for (int j = 0; j < NPTENTRIES; j ++) 
 
@@ -148,7 +217,7 @@ test_pgdir(pde_t *pgdir) {
         }
     
     cprintf("[0x%x...0x%x) -> [0x%x...0x%x): flag 0x%x\n", vs, ve, ps, pe, flag);
-    cprintf("Page tables: %d(%dKB)\n", num_pgt, num_pgt*4);
+    //cprintf("Page tables: %d(%dKB)\n", num_pgt, num_pgt*4);
     cprintf("User's memory: %dMB\n", num_usrpg*4/1024);
     cprintf("***** Test end\n");
 }

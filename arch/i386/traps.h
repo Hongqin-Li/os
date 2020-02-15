@@ -39,7 +39,7 @@ struct trapframe {
     uint32_t esp;
     uint16_t ss;
     uint16_t padding6;
-};
+} __attribute__((packed));
 
 // Processor-defined:
 #define T_DIVIDE         0      // divide error

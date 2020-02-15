@@ -67,7 +67,7 @@ strncmp(const char *p, const char *q, uint32_t n)
 }
 
 char*
-strncpy(char *s, const char *t, int n)
+strncpy(char *s, const char *t, size_t n)
 {
   char *os;
 
