@@ -1,4 +1,5 @@
 #include <arch/i386/inc.h>
+#include <arch/i386/traps.h>
 
 void mp_main();
 static void boot_aps();
@@ -20,11 +21,12 @@ void kernel_main() {
     lapic_init();
     ioapic_init();
 
+    //ioapic_enable(IRQ_KBD, 0);
+
     proc_init();
 
     boot_aps();
     user_init();
-
     scheduler();
 }
 
@@ -55,7 +57,6 @@ boot_aps()
     // Clear the identical map: [0, 4MB) -> [0, 4MB)
     // Since all CPU have been in higher half
     entry_pgdir[0] = 0;
-	xchg(&finish, 1);
 }
 
 // Setup code for APs
@@ -63,12 +64,10 @@ void
 mp_main()
 {
     seg_init();
-    lapic_init();
     idt_init();
+    lapic_init();
 
-    cprintf("CPU(idx=%d, apicid=%d) initialization finished.\n", cpuidx(), thiscpu()->apicid);
 	xchg(&thiscpu()->status, CPU_STARTED); // tell boot_aps() we're up
-    while(!finish)
-        ;
+    cprintf("CPU(idx=%d, apicid=%d) initialization finished.\n", cpuidx(), thiscpu()->apicid);
     scheduler();
 }

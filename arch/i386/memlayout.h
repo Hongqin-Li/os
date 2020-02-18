@@ -10,8 +10,8 @@
 #define KERNBASE 0xF0000000         // First kernel virtual address
 #define KERNLINK (KERNBASE+EXTMEM)  // Address where kernel is linked
 
-#define KSTKSIZE (8*1024)
-#define USTACKTOP 0xD0000000
+#define KSTKSIZE 4096
+//#define USTACKTOP 0xD0000000
 
 // Physical address of startup code for non-boot CPUs (APs)
 #define MPENTRY_PADDR	0x7000

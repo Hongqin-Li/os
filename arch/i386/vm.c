@@ -7,10 +7,12 @@ seg_init()
 {
     // Map "logical" addresses to virtual addresses using identity map.
     struct cpu *c = &cpus[cpuidx()];
-    c->gdt[SEG_KCODE] = SEG(STA_X | STA_R, 0, 0xffffffff, DPL_KERN);
-    c->gdt[SEG_KDATA] = SEG(STA_W        , 0, 0xffffffff, DPL_KERN);
-    c->gdt[SEG_UCODE] = SEG(STA_X | STA_R, 0, 0xffffffff, DPL_USER);
-    c->gdt[SEG_UDATA] = SEG(STA_W        , 0, 0xffffffff, DPL_USER);
+    c->gdt[SEG_KCODE] = SEG(STA_X | STA_R, 0, 0xffffffff, PL_KERN);
+    c->gdt[SEG_KDATA] = SEG(STA_W        , 0, 0xffffffff, PL_KERN);
+    c->gdt[SEG_DCODE] = SEG(STA_X | STA_R, 0, 0xffffffff, PL_DRIVER);
+    c->gdt[SEG_DDATA] = SEG(STA_W        , 0, 0xffffffff, PL_DRIVER);
+    c->gdt[SEG_UCODE] = SEG(STA_X | STA_R, 0, 0xffffffff, PL_USER);
+    c->gdt[SEG_UDATA] = SEG(STA_W        , 0, 0xffffffff, PL_USER);
 
     extern void loadgdt(void *, int);// in entry.S
     loadgdt(c->gdt, sizeof(c->gdt) - 1);
@@ -22,6 +24,8 @@ void
 tss_init()
 {
     struct proc *p = thisproc();
+    if (p == &thiscpu()->scheduler) return;
+    //assert(p->magic == PROC_MAGIC);
     thiscpu()->gdt[SEG_TSS] = SEGTSS(&thiscpu()->ts, sizeof(thiscpu()->ts) - 1, 0);
     thiscpu()->ts.esp0 = (uint32_t)p;
     thiscpu()->ts.ss0 = SEG_SELECTOR(SEG_KDATA, TI_GDT, RPL_KERN);
@@ -29,7 +33,6 @@ tss_init()
     // setting IOPL=0 in eflags *and* iomb beyond the tss segment limit
     // forbids I/O instructions (e.g., inb and outb) from user space
     thiscpu()->ts.iomb = (uint16_t) 0xFFFF;
-    assert(p->magic == PROC_MAGIC);
 
     ltr(SEG_TSS << 3);
     //lcr3(V2P(p->pgdir));
@@ -53,9 +56,7 @@ pgdir_walk(pde_t *pgdir, const void *va, int32_t alloc)
     pte_t *pgt;
     if (*pde_p & PTE_P) 
         pgt = (pte_t *)P2V(PTE_ADDR(*pde_p));
-    else if (!alloc) 
-        return 0;
-    else if ((pgt = (pte_t *)kalloc(PGSIZE)) == 0)
+    else if (!alloc || (pgt = (pte_t *)kalloc(PGSIZE)) == 0)
         return 0;
     else {
         memset(pgt, 0, PGSIZE);
@@ -139,7 +140,7 @@ vm_free(pde_t *pgdir)
 }
 
 // Check that the user has permission to read memory [s, s+len).
-// Return 0 if not else 1.
+// Return 0 if valid else 1.
 int 
 uvm_check(pde_t *pgdir, char *s, uint32_t len)
 {
@@ -149,10 +150,10 @@ uvm_check(pde_t *pgdir, char *s, uint32_t len)
     for (uint32_t p = va; p <= ve; p += PGSIZE) {
         if (p >= KERNBASE || !pgdir_walk(pgdir, (void *)p, 0)) {
             cprintf("user has no permission to 0x%x\n", p);
-            return 0;
+            return 1;
         }
     }
-    return 1;
+    return 0;
 }
 
 void 

@@ -5,7 +5,7 @@
 
 // Spin lock
 struct spinlock {
-    int locked;
+    volatile int locked;
 };
 // Ticket lock
 struct ticketlock {

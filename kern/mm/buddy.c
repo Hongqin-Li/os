@@ -3,7 +3,7 @@
 #include <inc/bitmap.h>
 #include <inc/string.h>
 
-#include <kern/mm/buddy.h>
+#include <kern/mm.h>
 #include <kern/console.h>
 
 struct buddy_page {

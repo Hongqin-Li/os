@@ -1,15 +1,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys.h>
 
 void test_ipc() {
-    int nchild = 10;
+    int nchild = 2;
     int cid[nchild];
     for (int i = 0; i < nchild; i ++) {
         int pid = fork();
         if (!pid) {
-            int get = recvi();
-            cprintf("child %d recv: %d\n", i, get);
+            char buf[10];
+            recvs(buf, 10);
+            cprintf("child %d recv: %s\n", i, buf);
             exit();
         }
         else {
@@ -18,7 +20,6 @@ void test_ipc() {
     }
     for (int i = 0; i < nchild; i ++) {
         cprintf("cid[%d]: %x\n", i, cid[i]);
-        sendi(cid[i], i + 1);
-        //cprintf("parent send i: %d\n", i);
+        sends(cid[i], "hello", 6);
     }
 }

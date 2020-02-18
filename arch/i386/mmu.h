@@ -5,6 +5,7 @@
 
 // Eflags register
 #define FL_IF           0x00000200      // Interrupt Enable
+#define FL_IOPL(x)      ((x&3) << 12)   // IO Privilege Level
 
 // Control Register flags
 #define CR0_PE          0x00000001      // Protection Enable
@@ -27,6 +28,10 @@
 #define TI_GDT  0
 #define TI_LDT  1
 
+#define PL_KERN    0
+#define PL_DRIVER  1
+#define PL_USER    3
+
 #define RPL_KERN    0
 #define RPL_USER    3
 #define DPL_KERN    0
@@ -35,12 +40,14 @@
 // various segment selectors.
 #define SEG_KCODE 1  // kernel code
 #define SEG_KDATA 2  // kernel data+stack
-#define SEG_UCODE 3  // user code
-#define SEG_UDATA 4  // user data+stack
-#define SEG_TSS   5  // this process's task state
+#define SEG_DCODE 3  // driver code
+#define SEG_DDATA 4  // driver data+stack
+#define SEG_UCODE 5  // user code
+#define SEG_UDATA 6  // user data+stack
+#define SEG_TSS   7  // this process's task state
 
 // cpu->gdt[NSEGS] holds the above segments.
-#define NSEGS     6
+#define NSEGS     8
 
 // application segment type bits
 #define STA_X       0x8     // executable segment
@@ -160,10 +167,10 @@ struct taskstate {
     uint32_t *esp2;
     uint16_t ss2;
     uint16_t padding3;
-    void *cr3;            // Page directory base
-    uint32_t *eip;        // Saved state from last task switch
+    void *cr3;              // Page directory base
+    uint32_t *eip;          // Saved state from last task switch
     uint32_t eflags;
-    uint32_t eax;         // More saved state (registers)
+    uint32_t eax;           // More saved state (registers)
     uint32_t ecx;
     uint32_t edx;
     uint32_t ebx;
@@ -171,7 +178,7 @@ struct taskstate {
     uint32_t *ebp;
     uint32_t esi;
     uint32_t edi;
-    uint16_t es;          // Even more saved state (segment selectors)
+    uint16_t es;            // Even more saved state (segment selectors)
     uint16_t padding4;
     uint16_t cs;
     uint16_t padding5;
@@ -185,8 +192,8 @@ struct taskstate {
     uint16_t padding9;
     uint16_t ldt;
     uint16_t padding10;
-    uint16_t t;           // Trap on task switch
-    uint16_t iomb;        // I/O map base address
+    uint16_t t;             // Trap on task switch
+    uint16_t iomb;          // I/O map base address
 };
 
 // Gate descriptors for interrupts and traps

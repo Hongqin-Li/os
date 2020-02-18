@@ -2,7 +2,9 @@
 #define INC_UNISTD_H
 
 int fork();
-int sendi(int, int);
+int sleep();
+int yield();
+int sendi(int, int, int);
 int recvi();
 
 #endif

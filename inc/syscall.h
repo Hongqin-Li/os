@@ -11,12 +11,13 @@ enum {
 
     // Process
 	SYS_exit,
+    SYS_sleep,
     SYS_yield, 
     SYS_fork,
 
     // IPC
-    SYS_sendi,
-    SYS_recvi,
+    SYS_send,
+    SYS_recv,
 
     SYS_open,
     SYS_close,

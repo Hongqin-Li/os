@@ -4,6 +4,7 @@
 #include <inc/types.h>
 #include <inc/string.h>
 #include <inc/list.h>
+#include <inc/sys.h>
 
 #include <arch/i386/x86.h>
 #include <arch/i386/memlayout.h>
@@ -13,21 +14,28 @@
 #include <kern/locks.h>
 
 #define PROC_MAGIC 0xabcdcccc
-//enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, WAITING, ZOMBIE };
+enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, WAITING, ZOMBIE };
 struct proc {
     int magic;
     pde_t *pgdir;
 
+    int state;
     struct list_head hlist;
     struct list_head wait_list;
     struct list_head pos;       // Scheduled by whom, either empty
                                 // or in ready_list, or in zombie_list
-    int msgi;
+    struct mailbox *mailbox;
+
+    struct list_head page_list;
     struct context *context;    // Value of the kernel stack pointer
     struct trapframe *tf;
 };
 
+// Large Prime Number: https://planetmath.org/goodhashtableprimes
 #define PROC_BUCKET_SIZE     769
+#define PROC_HASH(x)         (((uint32_t)x) % PROC_BUCKET_SIZE)
+#define PROC_EXISTS(p) (list_find(&ptable.hlist[PROC_HASH(p)], &(p)->hlist) && (p)->magic == PROC_MAGIC)
+
 struct ptable {
     struct spinlock lock;
     struct list_head hlist[PROC_BUCKET_SIZE];    // Hash Map of all proc
@@ -105,19 +113,25 @@ void kfree(void *);
 // proc.c
 extern struct ptable ptable;
 struct proc *thisproc();
+struct proc *proc_alloc();
 void proc_init();
-void user_init();
 void proc_stat();
 void scheduler();
+void sleep();
+void wakeup(struct proc *);
+void swtchp(struct proc *);
 void exit();
 int fork();
-
-int yield(struct proc *);
+void yield(struct proc *);
 struct proc *serve();
 
+// user.c
+extern struct proc *kbd_proc;
+void user_init();
+void user_intr();
+
 // ipc.c
-int sendi(struct proc *p, int i);
-int recvi();
+void ipc_init(struct proc *);
 
 // syscall.c
 int32_t syscall(uint32_t num, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5);

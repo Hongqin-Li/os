@@ -1,4 +1,4 @@
-#include <memlayout.h>
+#include <sys.h>
 
 // Entrypoint - this is where the kernel (or our parent environment)
 // starts us running when we are initially loaded into a new environment.
@@ -6,7 +6,7 @@
 .globl _start
 _start:
     // See if we were started with arguments on the stack
-    cmpl $USTACKTOP, %esp
+    cmpl $USTKTOP, %esp
     jne args_exist
 
     // If not, push dummy argc/argv arguments.

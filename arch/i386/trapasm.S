@@ -29,7 +29,6 @@ alltraps:
 # Return falls through to trapret...
 .globl trapret
 trapret:
-    # Prepare TSS
     call tss_init
 	# Restore registers.
     popal
@@ -42,5 +41,4 @@ trapret:
     # Pop error code and trapno
     # iret don't know what the current trap is,
     # thus won't pop those for us
-    sti
 	iret

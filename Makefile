@@ -45,7 +45,7 @@ INC_DIRS := $(shell find $(SRC_DIRS) -type d)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 # CC += -I. $(INC_FLAGS) -MMD -MP
-CC += -I. -Iarch/i386 -Iinc -MMD -MP
+CC += -I. -Iarch/i386 -Iinc -Iuser/ -MMD -MP
 
 $(BUILD_DIR)/%.c.o: %.c
 	mkdir -p $(dir $@)
@@ -61,13 +61,13 @@ GCC_LIB := $(shell $(CC) $(CFLAGS) -print-libgcc-file-name)
 
 .SECONDEXPANSION:
 # link gcc library to support int64_t division operation
-$(BUILD_DIR)/user/%.elf: $(LIBC_A) $$(addsuffix .o,$$(addprefix $(BUILD_DIR)/,$$(shell find user/% -name "*.c")))
-	$(CC) -I. -T user/user.ld -o $@ user/entry.S $^ $(GCC_LIB)
+$(BUILD_DIR)/user/%.elf: user/user.ld user/entry.S $(LIBC_A) $$(addsuffix .o,$$(addprefix $(BUILD_DIR)/,$$(shell find user/% -name "*.c")))
+	$(CC) -I. -T $< -o $@ $(filter-out $<,$^) $(GCC_LIB)
 	objdump -S -D $@ > $(basename $@).asm
 
 $(KERN_ELF): $(ARCH_DIR)/linker.ld $(OBJS) $(USER_ELFS)
 	# $(CC) -o $@ -T $< $(OBJS) 
-	$(LD) -o $@ -T $< $(OBJS) -b binary $(USER_ELFS)
+	$(LD) -o $@ -T $< $(OBJS) $(GCC_LIB) -b binary $(USER_ELFS)
 	objdump -S -D $@ > $(basename $@).asm
 
 $(IMG): $(KERN_ELF)

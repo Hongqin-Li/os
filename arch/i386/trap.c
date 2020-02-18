@@ -34,15 +34,16 @@ trap(struct trapframe *tf)
             break;
 
         case T_IRQ0 + IRQ_TIMER:
-            //lapic_eoi();
+            //cprintf("%d", cpuidx());
+            lapic_eoi();
+            break;
+
+        case T_IRQ0 + IRQ_KBD:
+            user_intr(kbd_proc);
+            lapic_eoi();
             break;
 
 /*
-        case T_IRQ0 + IRQ_KBD:
-            //kbd_intr();
-            //lapic_eoi();
-            break;
-
         case T_IRQ0 + IRQ_IDE:
             //ide_intr();
             //lapic_eoi();

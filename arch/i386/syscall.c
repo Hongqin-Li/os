@@ -1,14 +1,14 @@
 
 #include <inc/syscall.h>
+#include <inc/sys.h>
 #include <arch/i386/inc.h>
 // Print a string to the system console.
 // The string is exactly 'len' characters long.
 static int
 sys_cputs(char *s, size_t len)
 {
-    if (!uvm_check(thisproc()->pgdir, s, len)) {
+    if (uvm_check(thisproc()->pgdir, s, len)) 
         return 0;
-    }
     for (int i = 0; i < len; i ++) 
         consputc(s[i]);
     return 0;
@@ -30,16 +30,28 @@ sys_exit(void)
 	exit();
     return 0;
 }
-static int
-sys_yield() {
-    //return yield();
-}
+
 static int
 sys_fork() {
     return fork();
 }
 
-//IPC: inter process communication
+static int
+sys_sleep()
+{
+    spinlock_acquire(&ptable.lock);
+    sleep();
+    spinlock_release(&ptable.lock);
+    return 0;
+}
+
+static int
+sys_yield() {
+    spinlock_acquire(&ptable.lock);
+    yield(0);
+    spinlock_release(&ptable.lock);
+    return 0;
+}
 
 // Dispatches to the correct kernel function, passing the arguments.
 int32_t
@@ -52,9 +64,12 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
         case SYS_cgetc: return sys_cgetc(); 
 
         case SYS_exit:  return sys_exit(); 
+        case SYS_sleep: return sys_sleep(); 
         case SYS_fork:  return sys_fork();
-        case SYS_sendi:   return sendi((struct proc *)a1, a2);
-        case SYS_recvi:   return recvi();
+        case SYS_yield:  return sys_yield();
+
+        case SYS_send:   return sys_send(a1, a2);
+        case SYS_recv:   return sys_recv(a1);
         //case SYS_yield: return sys_yield();
 
         //case SYS_open: return sys_open((char *)a1, a2);
@@ -66,6 +81,7 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
         //case SYS_msgsnd: return sys_msgsnd(a1, a2, a3); 
         //case SYS_msgrcv: return sys_msgrcv(a1, a2, a3);
         //case SYS_test: return sys_test();
+        default: panic("syscall: not implemented.\n");
     }
     return 0;
 }

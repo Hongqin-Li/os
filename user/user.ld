@@ -1,6 +1,3 @@
-/* Simple linker script for JOS user-level programs.
-   See the GNU ld 'info' manual ("info ld") to learn the syntax. */
-
 OUTPUT_FORMAT("elf32-i386", "elf32-i386", "elf32-i386")
 OUTPUT_ARCH(i386)
 ENTRY(_start)
@@ -8,7 +5,8 @@ ENTRY(_start)
 SECTIONS
 {
 	/* Load programs at this address: "." means the current address */
-	. = 0x800020;
+	/*. = 0x800020;*/
+    . = 0x0;
 
 	.text : {
 		*(.text .stub .text.* .gnu.linkonce.t.*)

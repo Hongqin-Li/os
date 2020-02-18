@@ -4,6 +4,7 @@
 #include <types.h>
 
 #define BITMAP(name, bits) uint32_t name[ROUNDUP(bits, 32)/32]
+#define BITMAP_STATIC(name, bits) uint32_t name[((uint32_t)bits+31)/32]
 
 static inline void 
 bitmap_set(uint32_t bm[], int i, int b) {

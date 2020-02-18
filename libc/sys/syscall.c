@@ -2,6 +2,7 @@
 #include <syscall.h>
 #include <types.h>
 #include <unistd.h>
+#include <sys.h>
 
 int32_t
 syscall(int num, int check, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
@@ -37,30 +38,19 @@ syscall(int num, int check, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 	return ret;
 }
 
-void
-exit()
-{
-	syscall(SYS_exit, 0, 0, 0, 0, 0, 0);
+void exit() {syscall(SYS_exit, 0, 0, 0, 0, 0, 0); }
+int fork() { return syscall(SYS_fork, 0, 0, 0, 0, 0, 0); }
+int sleep() { return syscall(SYS_sleep, 0, 0, 0, 0, 0, 0); }
+int yield() { return syscall(SYS_yield, 0, 0, 0, 0, 0, 0); }
+
+int
+sys_send(int pid, int irqno) {
+    return syscall(SYS_send, 0, pid, irqno, 0, 0, 0);
 }
 
 int
-fork() {
-    return syscall(SYS_fork, 0, 0, 0, 0, 0, 0);
-}
-
-int
-yield() {
-    return syscall(SYS_yield, 0, 0, 0, 0, 0, 0);
-}
-
-int
-sendi(int pid, int i) {
-    return syscall(SYS_sendi, 0, pid, i, 0, 0, 0);
-}
-
-int
-recvi() {
-    return syscall(SYS_recvi, 0, 0, 0, 0, 0, 0);
+sys_recv(int irqno) {
+    return syscall(SYS_recv, 0, irqno, 0, 0, 0, 0);
 }
 
 

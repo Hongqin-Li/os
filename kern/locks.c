@@ -1,15 +1,20 @@
 #include <inc/types.h>
 #include <kern/locks.h>
 #include <kern/console.h>
+#include <arch/i386/x86.h>
+#include <arch/i386/mmu.h>
+#include <arch/i386/inc.h>
 
 void 
 spinlock_acquire(struct spinlock *lk) {
     while(lk->locked || __sync_lock_test_and_set(&lk->locked, 1))
         ;
+    assert(!(read_eflags()&FL_IF));
 }
 
 void 
 spinlock_release(struct spinlock *lk) {
+    assert(!(read_eflags()&FL_IF));
     if (!lk->locked)
         panic("spinlock_release: not locked\n");
     __sync_lock_test_and_set(&lk->locked, 0);
