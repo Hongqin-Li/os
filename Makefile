@@ -22,7 +22,7 @@ BUILD_DIR = obj
 KERN_ELF := $(BUILD_DIR)/kernel.o
 IMG := $(BUILD_DIR)/sos.iso
 
-GRUB_CFG := menuentry "sos" { multiboot2 /boot/$(notdir $(KERN_ELF)) }
+GRUB_CFG := menuentry "sos" { multiboot /boot/$(notdir $(KERN_ELF)) }
 
 all: $(IMG)
 
@@ -81,14 +81,14 @@ $(IMG): $(KERN_ELF)
 RAM := 4 # MB
 NCPU := 4
 
-qemu: $(IMG) 
-	qemu-system-i386 -cdrom $< -serial mon:stdio -m $(RAM) -smp $(NCPU)
-qemu-nox: $(IMG) 
-	qemu-system-i386 -cdrom $< -serial mon:stdio -m $(RAM) -smp $(NCPU) -nographic
+qemu: $(KERN_ELF) 
+	qemu-system-i386 -kernel $< -serial mon:stdio -m $(RAM) -smp $(NCPU)
+qemu-nox: $(KERN_ELF) 
+	qemu-system-i386 -kernel $< -serial mon:stdio -m $(RAM) -smp $(NCPU) -nographic
 qemu-img: $(IMG)
 	qemu-system-i386 -cdrom $< -serial mon:stdio -m $(RAM) -smp $(NCPU)
 qemu-gdb: $(IMG)
-	qemu-system-i386 -cdrom $< -serial mon:stdio -m $(RAM) -smp $(NCPU) -S -gdb tcp::1234
+	qemu-system-i386 -kernel $< -serial mon:stdio -m $(RAM) -smp $(NCPU) -S -gdb tcp::1234
 gdb: 
 	gdb -n -x .gdbinit
 
