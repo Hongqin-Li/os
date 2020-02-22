@@ -80,6 +80,7 @@ proc_alloc()
     p->context = &hf->context; // stack pointer
     p->tf = tf;
     p->magic = PROC_MAGIC;
+    p->size = 0;
     //p->pgdir = vm_fork(entry_pgdir);
 
     list_init(&p->pos);
@@ -232,6 +233,28 @@ scheduler() {
         spinlock_release(&ptable.lock);
         sti();
     }
+}
+
+void *
+sbrk(int n)
+{
+    struct proc *tp = thisproc();
+    int sz = tp->size;
+    assert(sz >= 0);
+    if (n > 0) 
+        vm_alloc(tp->pgdir, USTKTOP + PGSIZE + sz, n);// PGSIZE for mailbox
+    else if (n < 0) {
+        if (sz + n < 0) 
+            n = -sz;
+        int s = ROUNDUP(sz + n, PGSIZE);
+        assert(s >= 0);
+        vm_dealloc(tp->pgdir, USTKTOP + PGSIZE + s, -n);
+    }
+    //vm_switch(tp->pgdir);
+    cprintf("sbrk: proc %x, n %d, size(%d -> %d), heap(%x~%x)\n", tp, n, sz, sz+n, USTKTOP+PGSIZE, USTKTOP+PGSIZE+sz+n);
+    tp->size = sz + n;
+    //test_pgdir(tp->pgdir);
+    return (void *)USTKTOP+sz;
 }
 
 void

@@ -33,18 +33,12 @@ $(LIBC_A): FORCE
 FORCE:
 # https://www.gnu.org/software/make/manual/html_node/Force-Targets.html
 
-##### Kernel ELF Start
-
 # Automatically find sources and headers
 SRCS := $(shell find $(SRC_DIRS) -name *.c -or -name *.S)
 OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
 DEPS := $(OBJS:.o=.d)
 -include $(DEPS)
 
-INC_DIRS := $(shell find $(SRC_DIRS) -type d)
-INC_FLAGS := $(addprefix -I,$(INC_DIRS))
-
-# CC += -I. $(INC_FLAGS) -MMD -MP
 CC += -I. -Iarch/i386 -Iinc -Iuser/ -MMD -MP
 
 $(BUILD_DIR)/%.c.o: %.c
@@ -57,17 +51,15 @@ $(BUILD_DIR)/%.S.o: %.S
 ##### User ELFs
 USER_DIRS := $(shell find user/ -maxdepth 1 -mindepth 1 -type d)
 USER_ELFS := $(USER_DIRS:%=$(BUILD_DIR)/%.elf)
-GCC_LIB := $(shell $(CC) $(CFLAGS) -print-libgcc-file-name)
 
+# library should be at last!
 .SECONDEXPANSION:
-# link gcc library to support int64_t division operation
-$(BUILD_DIR)/user/%.elf: user/user.ld user/entry.S $(LIBC_A) $$(addsuffix .o,$$(addprefix $(BUILD_DIR)/,$$(shell find user/% -name "*.c")))
-	$(CC) -I. -T $< -o $@ $(filter-out $<,$^) $(GCC_LIB)
+$(BUILD_DIR)/user/%.elf: user/user.ld user/entry.S $$(addsuffix .o,$$(addprefix $(BUILD_DIR)/,$$(shell find user/% -name "*.c"))) $(LIBC_A)
+	$(CC) -I. -T $< -o $@ $(filter-out $<,$^) 
 	objdump -S -D $@ > $(basename $@).asm
 
 $(KERN_ELF): $(ARCH_DIR)/linker.ld $(OBJS) $(USER_ELFS)
-	# $(CC) -o $@ -T $< $(OBJS) 
-	$(LD) -o $@ -T $< $(OBJS) $(GCC_LIB) -b binary $(USER_ELFS)
+	$(LD) -o $@ -T $< $(OBJS) -b binary $(USER_ELFS)
 	objdump -S -D $@ > $(basename $@).asm
 
 $(IMG): $(KERN_ELF)
@@ -76,11 +68,8 @@ $(IMG): $(KERN_ELF)
 	echo $(GRUB_CFG) > sysroot/boot/grub/grub.cfg
 	grub-mkrescue -o $@ sysroot
 
-
-# Hardware
 RAM := 4 # MB
 NCPU := 4
-
 qemu: $(KERN_ELF) 
 	qemu-system-i386 -kernel $< -serial mon:stdio -m $(RAM) -smp $(NCPU)
 qemu-nox: $(KERN_ELF) 

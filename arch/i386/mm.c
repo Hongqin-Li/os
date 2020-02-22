@@ -9,7 +9,7 @@ static struct buddy_system *bsp;
 static struct freelist freelist;
 static struct spinlock memlock;
 
-#define DEBUG
+//#define DEBUG
 
 #define MAXN  300
 static void *pool[MAXN];

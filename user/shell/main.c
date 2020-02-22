@@ -14,7 +14,7 @@ umain(int argc, char **argv)
 {
     cprintf("shell hello\n");
     while (1) {
-        int cmd = sys_recv(1);
+        int cmd = sys_recv(0, 0);
         for (int c; (c = kbd_getc()) != -1; ) 
             if (c)
                 cprintf("%c", c);
@@ -32,6 +32,8 @@ kbd_getc()
 
     st = inb(KBSTATP);
     if((st & KBS_DIB) == 0)
+        return -1;
+    if ((st & KBS_MOUSE))
         return -1;
     data = inb(KBDATAP);
 

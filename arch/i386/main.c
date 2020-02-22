@@ -21,7 +21,7 @@ void kernel_main() {
     lapic_init();
     ioapic_init();
 
-    //ioapic_enable(IRQ_KBD, 0);
+    ioapic_enable(IRQ_KBD, 0);
 
     proc_init();
 

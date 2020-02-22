@@ -18,6 +18,7 @@ enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, WAITING, ZOMBIE };
 struct proc {
     int magic;
     pde_t *pgdir;
+    int size;
 
     int state;
     struct list_head hlist;
@@ -98,6 +99,7 @@ void tss_init();
 pte_t *pgdir_walk(pde_t *pgdir, const void *va, int32_t alloc);
 pde_t *vm_fork(pde_t *pgdir);
 void vm_alloc(pde_t *pgdir, uint32_t va, uint32_t len);
+int  vm_dealloc(pde_t *pgdir, uint32_t va, uint32_t len);
 void vm_free(pde_t *pgdir);
 void vm_switch(pde_t *pgdir);
 int uvm_check(pde_t *pgdir, char *s, uint32_t len);
@@ -122,6 +124,7 @@ void wakeup(struct proc *);
 void swtchp(struct proc *);
 void exit();
 int fork();
+void *sbrk(int n);
 void yield(struct proc *);
 struct proc *serve();
 

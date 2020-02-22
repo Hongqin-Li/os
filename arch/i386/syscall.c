@@ -31,6 +31,8 @@ sys_exit(void)
     return 0;
 }
 
+//increments the program's data space by n bytes.
+
 static int
 sys_fork() {
     return fork();
@@ -67,20 +69,11 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
         case SYS_sleep: return sys_sleep(); 
         case SYS_fork:  return sys_fork();
         case SYS_yield:  return sys_yield();
+        case SYS_sbrk:  return (int32_t)sbrk(a1);
 
         case SYS_send:   return sys_send(a1, a2);
-        case SYS_recv:   return sys_recv(a1);
-        //case SYS_yield: return sys_yield();
+        case SYS_recv:   return sys_recv(a1, a2);
 
-        //case SYS_open: return sys_open((char *)a1, a2);
-        //case SYS_close: return sys_close(a1);
-        //case SYS_read: return sys_read(a1, (void *)a2, a3);
-        //case SYS_write: return sys_write(a1, (void *)a2, a3);
-        //case SYS_lseek: return sys_lseek(a1, a2, a3);
-
-        //case SYS_msgsnd: return sys_msgsnd(a1, a2, a3); 
-        //case SYS_msgrcv: return sys_msgrcv(a1, a2, a3);
-        //case SYS_test: return sys_test();
         default: panic("syscall: not implemented.\n");
     }
     return 0;

@@ -10,25 +10,25 @@
 
 struct mailbox {
     BITMAP_STATIC(irq, 32);
-    int sender;
+    int len;
     char content[512];
 } __attribute__((packed));
 
-int sys_send(int pid, int irq);
-int sys_recv(int irq);
+int sys_send(int pid, int cnt);
+int sys_recv(int pid, int cnt);
 
 // User util functions
 static int 
 sends(int pid, char *s, int len) {
     struct mailbox *mb = (void *)USTKTOP;
     memmove(mb->content, s, len);
-    return sys_send(pid, 0);
+    return sys_send(pid, len);
 }
 static void
 recvs(char *buf, int len) {
-    sys_recv(0);
+    int sender = sys_recv(0, len);
     struct mailbox *mb = (void *)USTKTOP;
-    memmove(buf, mb->content, len);
+    memmove(buf, mb->content, mb->len);
 }
 #endif
 

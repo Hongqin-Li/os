@@ -11,7 +11,7 @@ LIBC_A := $(BUILD_DIR)/libc.a
 all: $(LIBC_A)
 
 # Automatically find sources and headers
-SRCS := $(shell find ./ -name "*.c" -or -name "*.S")
+SRCS := $(shell find . -name "*.c" -or -name "*.S")
 OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
 DEPS := $(OBJS:.o=.d)
 -include $(DEPS)

@@ -94,6 +94,32 @@ vm_alloc(pde_t *pgdir, uint32_t va, uint32_t len)
     }
 }
 
+// Unmap len bytes beginning at virtual address va 
+// All covered pages will be freed.
+int
+vm_dealloc(pde_t *pgdir, uint32_t va, uint32_t len)
+{
+    uint32_t ve;
+    va = ROUNDDOWN(va, PGSIZE);
+    ve = ROUNDDOWN(va + len - 1, PGSIZE);
+    assert(va <= ve);
+
+    while (1) {
+        assert(va < KERNBASE);
+        assert(va != USTKTOP);
+
+        pte_t *pte = pgdir_walk(pgdir, (void *)va, 1);
+        if (*pte & PTE_P) {
+            kfree(P2V(PTE_ADDR(*pte)));
+            *pte = 0;
+        }
+        if (va == ve) 
+            break;
+        va += PGSIZE;
+    }
+}
+
+
 // Copy and allocate a new page table 
 // that remains the same mapping.
 // Reusing the kernel space.
@@ -155,6 +181,27 @@ uvm_check(pde_t *pgdir, char *s, uint32_t len)
     }
     return 0;
 }
+
+// Deallocate user pages to bring the process size from oldsz to
+// newsz.  oldsz and newsz need not be page-aligned, nor does newsz
+// need to be less than oldsz.  oldsz can be larger than the actual
+// process size.  Returns the new process size.
+int
+uvm_dealloc(pde_t *pgdir, uint32_t oldsz, uint32_t newsz)
+{
+    if (newsz >= oldsz)
+        return oldsz;
+
+    for (uint32_t a = ROUNDUP(newsz, PGSIZE); a < oldsz; a += PGSIZE) {
+        pte_t *pte = pgdir_walk(pgdir, (char*)a, 0);
+        if (*pte & PTE_P) {
+            kfree(P2V(PTE_ADDR(*pte)));
+            *pte = 0;
+        }
+    }
+    return newsz;
+}
+
 
 void 
 vm_test()

@@ -14,6 +14,7 @@ enum {
     SYS_sleep,
     SYS_yield, 
     SYS_fork,
+    SYS_sbrk, 
 
     // IPC
     SYS_send,
