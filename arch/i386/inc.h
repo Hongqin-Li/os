@@ -19,6 +19,7 @@ struct proc {
     int magic;
     pde_t *pgdir;
     int size;
+    char name[20];
 
     int state;
     struct list_head hlist;
@@ -27,7 +28,6 @@ struct proc {
                                 // or in ready_list, or in zombie_list
     struct mailbox *mailbox;
 
-    struct list_head page_list;
     struct context *context;    // Value of the kernel stack pointer
     struct trapframe *tf;
 };
@@ -129,7 +129,7 @@ void yield(struct proc *);
 struct proc *serve();
 
 // user.c
-extern struct proc *kbd_proc;
+extern struct proc *utable[NUSERS];
 void user_init();
 void user_intr();
 
@@ -138,5 +138,8 @@ void ipc_init(struct proc *);
 
 // syscall.c
 int32_t syscall(uint32_t num, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5);
+
+// debug.c
+void trace(uint32_t);
 
 #endif

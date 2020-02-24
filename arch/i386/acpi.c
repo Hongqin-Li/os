@@ -98,7 +98,7 @@ parse_mcfg(struct sdthdr *h)
 static struct sdthdr *
 parse_rsdt(struct sdthdr *rsdt)
 {
-    assert(memcmp(rsdt->signature, "RSDT", 4) == 0)
+    assert(memcmp(rsdt->signature, "RSDT", 4) == 0);
     assert(rsdt->revision == 1);
 
     int n = (rsdt->length - sizeof(*rsdt)) / 4;

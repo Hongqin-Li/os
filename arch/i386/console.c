@@ -2,15 +2,8 @@
 // Input is from the keyboard or serial port.
 // Output is written to the screen and serial port.
 
-
-#include <inc/types.h>
-#include <inc/string.h>
-
-#include <kern/locks.h>
-#include <kern/console.h>
-
-#include <x86.h>
-#include <memlayout.h>
+#include <arch/i386/inc.h>
+#include <stdarg.h>
 
 static struct spinlock console_lock;
 
@@ -20,6 +13,8 @@ static uint16_t *crt = (uint16_t *)P2V(0xb8000);  // CGA memory
 // Intel 8250 serial port (UART).
 #define COM1    0x3f8
 static int uart;    // is there a uart?
+
+static int panicked;
 
 static void 
 delay() {
@@ -64,26 +59,6 @@ uart_putc(int c)
         delay();
     outb(COM1+0, c);
 }
-
-/*
-static int
-uart_getc(void)
-{
-    if(!uart)
-        return -1;
-    if(!(inb(COM1+5) & 0x01))
-        return -1;
-    return inb(COM1+0);
-}
-
-void
-uart_intr(void)
-{
-    console_intr(uartgetc);
-}
-*/
-
-
 
 static void
 cgaputc(int c)
@@ -147,7 +122,7 @@ printint(int xx, int base, int sign)
 
 void
 consputc(int c) {
-
+    if (panicked) while(1);
     spinlock_acquire(&console_lock);
 
     if (c == BACKSPACE) {
@@ -158,26 +133,19 @@ consputc(int c) {
     else
         uart_putc(c);
 
-    cgaputc(c);
+    //cgaputc(c);
 
     spinlock_release(&console_lock);
 }
 
-// Print to the console.
 void
-cprintf(char *fmt, ...)
+vprintfmt(void (*putch)(int), char *fmt, va_list ap)
 {
-    int i, c, locking;
-    uint *argp;
+    int i, c;
     char *s;
-
-    if (fmt == 0)
-        panic("null fmt");
-
-    argp = (uint*)(void*)(&fmt + 1);
     for(i = 0; (c = fmt[i] & 0xff) != 0; i++) {
         if(c != '%') {
-            consputc(c);
+            putch(c);
             continue;
         }
         if (!(c = fmt[++i] & 0xff))
@@ -185,34 +153,62 @@ cprintf(char *fmt, ...)
 
         switch(c) {
         case 'u':
-            printint(*argp++, 10, 0);
+            printint(va_arg(ap, int), 10, 0);
             break;
         case 'd':
-            printint(*argp++, 10, 1);
+            printint(va_arg(ap, int), 10, 1);
             break;
         case 'x':
         case 'p':
-            printint(*argp++, 16, 0);
+            printint(va_arg(ap, int), 16, 0);
             break;
         case 'c':
-            consputc(*argp++);
+            putch(va_arg(ap, int));
             break;
         case 's':
-            if((s = (char*)*argp++) == 0)
+            if((s = (char*)va_arg(ap, char *)) == 0)
                 s = "(null)";
             for(; *s; s++)
-                consputc(*s);
+                putch(*s);
             break;
         case '%':
-            consputc('%');
+            putch('%');
             break;
         default:
             // Print unknown % sequence to draw attention.
-            consputc('%');
-            consputc(c);
+            putch('%');
+            putch(c);
             break;
         }
     }
+}
+
+// Print to the console.
+void
+cprintf(char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+    vprintfmt(consputc, fmt, ap);
+    va_end(ap);
+}
+
+void
+panic(char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+    vprintfmt(consputc, fmt, ap);
+    va_end(ap);
+
+    trace(20);
+
+    cprintf("%s:%d: kernel panic.\n", __FILE__, __LINE__);
+    panicked = 1;
+    while(1)
+        ;
 }
 
 void

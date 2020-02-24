@@ -9,6 +9,7 @@ sys_cputs(char *s, size_t len)
 {
     if (uvm_check(thisproc()->pgdir, s, len)) 
         return 0;
+    //cprintf("sys_cputs: %x ~ %x ", s, s + len);
     for (int i = 0; i < len; i ++) 
         consputc(s[i]);
     return 0;

@@ -39,7 +39,7 @@ trap(struct trapframe *tf)
             break;
 
         case T_IRQ0 + IRQ_KBD:
-            user_intr(kbd_proc);
+            user_intr(utable[USER_KBD]);
             lapic_eoi();
             break;
 
@@ -50,7 +50,7 @@ trap(struct trapframe *tf)
             break;
 */
         default: 
-            cprintf("tf number: %d\n", tf->trapno);
+            cprintf("tf number: %d, thisproc: %x, cr2: %x, eip: %x\n", tf->trapno, thisproc(), rcr2(), tf->eip);
             panic("tf not implemented.\n");
     }
 }

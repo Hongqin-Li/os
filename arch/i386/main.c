@@ -34,7 +34,6 @@ void kernel_main() {
 // stack pointer that should be loaded by mpentry.S to that CPU in
 // this variable.
 void *mpentry_kstack;
-
 static void
 boot_aps()
 {
@@ -45,12 +44,10 @@ boot_aps()
 
     // Boot each AP one at a time
     for (int i = 0; i < ncpu; i ++) {
-        if (i == cpuidx()) continue;
-        // Tell mpentry.S what stack to use 
+        if (i == cpuidx()) 
+            continue;
         mpentry_kstack = percpu_kstacks[i] + KSTKSIZE;
-        // Start the CPU at mpentry_start
         lapic_startap(cpus[i].apicid, MPENTRY_PADDR);
-        // Wait for the CPU to finish some basic setup in mp_main()
         while(cpus[i].status != CPU_STARTED)
             ;
     }

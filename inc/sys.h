@@ -7,12 +7,21 @@
 #include <bitmap.h>
 #include <string.h>
 
+enum {
+    USER_KBD = 0, 
+    USER_VGA, 
+    USER_VFS,
+    USER_UNIX,
+    NUSERS
+};
 
 struct mailbox {
     BITMAP_STATIC(irq, 32);
     int len;
     char content[512];
 } __attribute__((packed));
+
+#define USER_PID(i) ((int *)((struct mailbox *)USTKTOP)->content)[i]
 
 int sys_send(int pid, int cnt);
 int sys_recv(int pid, int cnt);

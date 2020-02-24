@@ -7,7 +7,8 @@ ipc_init(struct proc *p) {
     pte_t *pte = pgdir_walk(p->pgdir, (void *)USTKTOP, 0);
     assert(*pte & PTE_P);
     p->mailbox = P2V(PTE_ADDR(*pte));
-    assert(sizeof(struct mailbox) <= PGSIZE);
+    assert(sizeof(struct mailbox) <= PGSIZE  && sizeof(p->mailbox->content) >= sizeof(utable));
+    memmove(p->mailbox->content, utable, sizeof(utable));
 }
 
 // Send the first cnt bytes of the content of 
@@ -20,22 +21,24 @@ sys_send(int pid, int cnt)
 {
     struct proc *p = (struct proc *)pid;
     struct mailbox *tm;
-    int sent = 0;
-    //cprintf("sys_send: pid 0x%x, cnt %d\n", pid, cnt);
+    //assert(p != thisproc());
+    assert(!(read_eflags() & FL_IF));
     spinlock_acquire(&ptable.lock);
     if (PROC_EXISTS(p)) {
         if (cnt <= 0) {
             bitmap_set(p->mailbox->irq, -cnt, 1);
             wakeup(p);
+            cprintf("sys_send(cpu %d): %x(%s) notify %x(%s), cnt %d\n", cpuidx(), thisproc(), thisproc()->name, pid, p->name, cnt);
         }
         else {
+            assert(p != thisproc());
             tm = thisproc()->mailbox;
             tm->len = MIN(cnt, sizeof(tm->content));
+            cprintf("sys_send(cpu %d): %x(%s) start sending to %x(%s) cnt %d\n", cpuidx(), thisproc(), thisproc()->name, pid, p->name, cnt);
             yield(p);
-            sent = tm->len;
+            cprintf("sys_send(cpu %d): %x(%s) to %x(%s), cnt %d\n", cpuidx(), thisproc(), thisproc()->name, pid, p->name, cnt);
         }
     }
-    else sent = -1;
     spinlock_release(&ptable.lock);
     return 0;
 }
@@ -49,19 +52,25 @@ sys_recv(int pid, int cnt)
 {
     struct proc *tp = thisproc(), *p = 0;
     struct mailbox *tm = tp->mailbox, *m;
-    //cprintf("sys_recv: tp 0x%x, cnt %d\n", tp, cnt);
+    assert(!(read_eflags() & FL_IF));
     spinlock_acquire(&ptable.lock);
+    //cprintf("sys_recv: tp 0x%x, cnt %d\n", tp, cnt);
+    cprintf("sys_recv(cpu %d): %s start receiving cnt %d\n", cpuidx(), tp->name, cnt);
     if (cnt <= 0) {
         while (!bitmap_get(tm->irq, -cnt))
             sleep();
+        bitmap_set(tm->irq, -cnt, 0);
+        cprintf("sys_recv(cpu %d): %s recv notification, cnt %d\n", cpuidx(), tp->name, cnt);
     }
     else {
         while ((int)(p = serve()) != pid && pid) {
-            p->mailbox->len = -1;
+            //p->mailbox->len = -1;
         }
+        assert(PROC_EXISTS(p));
         m = p->mailbox;
         m->len = MIN(cnt, m->len);
         memmove(tm->content, m->content, tm->len = m->len);
+        cprintf("sys_recv(cpu %d): %s recv from %s, cnt %d\n", cpuidx(), tp->name, p->name, cnt);
     }
     spinlock_release(&ptable.lock);
     return (int)p;

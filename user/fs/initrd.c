@@ -52,8 +52,9 @@ initrd_reclaim(struct inode *ip) {
     struct initrd_inode *rip = GET_RIP(ip);
     if (rip->nlink == 0) {
         free(rip->data);
+        rip->type = T_NONE;
     }
-    rip->type = T_NONE;
+    //cprintf("initrd_reclaim(ip %x): rip %x, nlink %d, type %d\n", ip, rip, rip->nlink, rip->type);
 }
 
 // Allocate a file of specific type.

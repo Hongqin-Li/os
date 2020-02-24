@@ -35,6 +35,8 @@ void
 forkret()
 {
     cprintf("forkret\n");
+    ipc_init(thisproc());
+    tss_init();
     spinlock_release(&ptable.lock);
 }
 
@@ -113,7 +115,8 @@ swtchp(struct proc *p)
     struct proc *tp = thisproc();
     vm_switch(p->pgdir);
     thiscpu()->proc = p;
-    //cprintf("swtchp: cpu %d, %x -> %x\n", cpuidx(), tp, p);
+    cprintf("swtchp: cpu %d, %x(%s) -> %x(%s)\n", cpuidx(), tp, tp->name, p, p->name);
+    tss_init();
     swtch(&tp->context, p->context);
     thiscpu()->proc = tp;
     vm_switch(tp->pgdir);
@@ -154,15 +157,19 @@ inline void
 sleep()
 {
     list_init(&thisproc()->pos);
+    assert(!(read_eflags() & FL_IF));
     swtchp(&thiscpu()->scheduler);
+    assert(!(read_eflags() & FL_IF));
 }
 
 // Caller should hold ptable.lock
 inline void
 wakeup(struct proc *p)
 {
-    if (PROC_EXISTS(p) && list_empty(&p->pos)) 
+    if (PROC_EXISTS(p) && list_empty(&p->pos)) {
+        assert(p != thisproc() && p != &thiscpu()->scheduler);
         list_push_front(&ptable.ready_list, &p->pos);
+    }
 }
 
 // Sleep and wait for process p.
@@ -173,7 +180,12 @@ yield(struct proc *p)
 {
     struct proc *tp = thisproc();
     list_push_back(&p->wait_list, &tp->pos);
-    swtchp(list_empty(&p->pos) ? p: &thiscpu()->scheduler);
+    if (list_empty(&p->pos)) {
+        p->pos.next = 0;
+        swtchp(p);
+    }
+    else swtchp(&thiscpu()->scheduler);
+    //swtchp(list_empty(&p->pos) ? p: &thiscpu()->scheduler);
 }
 
 // Serve and return the first process in waiting list
@@ -184,7 +196,9 @@ serve()
     struct proc *tp = thisproc();
     while(list_empty(&tp->wait_list)) 
         sleep();
+    assert(!list_empty(&tp->pos));
     struct proc *p = CONTAINER_OF(list_front(&tp->wait_list), struct proc, pos);
+    assert(p != thisproc() && p != &thiscpu()->scheduler);
     list_drop(&p->pos);
     list_push_back(&ptable.ready_list, &p->pos);
     return p;
@@ -220,6 +234,9 @@ scheduler() {
     struct proc *tp = &thiscpu()->scheduler;
     tp->pgdir = entry_pgdir;
     thiscpu()->proc = tp;
+    memmove(tp->name, "sched", 5);
+    tp->name[5] = '0' + cpuidx();
+    tp->name[6] = '\0';
 
     while(1) {
         cli();
@@ -227,6 +244,7 @@ scheduler() {
         if (!list_empty(&ptable.ready_list)) {
             struct proc *p = CONTAINER_OF(list_front(&ptable.ready_list), struct proc, pos);
             list_drop(&p->pos);
+            assert(!list_empty(&p->pos));
             swtchp(p);
         }
         else reap();
@@ -254,7 +272,7 @@ sbrk(int n)
     cprintf("sbrk: proc %x, n %d, size(%d -> %d), heap(%x~%x)\n", tp, n, sz, sz+n, USTKTOP+PGSIZE, USTKTOP+PGSIZE+sz+n);
     tp->size = sz + n;
     //test_pgdir(tp->pgdir);
-    return (void *)USTKTOP+sz;
+    return (void *)USTKTOP+PGSIZE+sz;
 }
 
 void

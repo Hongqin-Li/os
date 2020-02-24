@@ -24,30 +24,24 @@
 
 #define UCODE_PASTE3(x, y, z) x ## y ## z
 
-#define LOAD_USER(name) \
+#define LOAD_X(name, tfloader) \
 ({  \
     extern uint8_t UCODE_PASTE3(_binary_obj_user_, name, _elf_start)[]; \
     struct proc *p = proc_alloc();   \
     p->pgdir = vm_fork(entry_pgdir);    \
-    TF_USER(p->tf); \
+    tfloader(p->tf); \
+    test_pgdir(p->pgdir); \
     ucode_load(p, UCODE_PASTE3(_binary_obj_user_, name, _elf_start)); \
     list_push_back(&ptable.ready_list, &p->pos);    \
     p; \
 })
 
-#define LOAD_DRIVER(name) \
-({  \
-    extern uint8_t UCODE_PASTE3(_binary_obj_user_, name, _elf_start)[]; \
-    struct proc *p = proc_alloc();   \
-    p->pgdir = vm_fork(entry_pgdir);    \
-    TF_DRIVER(p->tf); \
-    ucode_load(p, UCODE_PASTE3(_binary_obj_user_, name, _elf_start)); \
-    list_push_back(&ptable.ready_list, &p->pos);    \
-    p; \
-})
+#define LOAD_USER(name) ({LOAD_X(name, TF_USER); })
+#define LOAD_DRIVER(name) ({LOAD_X(name, TF_DRIVER); })
 
-struct proc *kbd_proc;
 static void ucode_load(struct proc *p, uint8_t *binary);
+
+struct proc *utable[NUSERS];
 
 void
 user_intr(struct proc *p)
@@ -55,16 +49,26 @@ user_intr(struct proc *p)
     sys_send((int)p, 0);
 }
 
-// Load drivers and user programs
+// Load drivers and user-space server
 void
 user_init()
 {
     spinlock_acquire(&ptable.lock);
 
-    LOAD_USER(test);
-    LOAD_USER(fs);
+    //LOAD_USER(test);
+    //LOAD_USER(fs);
 
-    kbd_proc = LOAD_DRIVER(shell); // Keyboard Driver
+    utable[USER_KBD] = LOAD_DRIVER(kbd); // Keyboard Driver
+    utable[USER_VGA] = LOAD_DRIVER(vga); // VGA Driver
+
+    // CGA Memory
+    // pte_t *pte = pgdir_walk(utable[USER_VGA]->pgdir, (void *)0xb8000, 1);
+    // assert(!(*pte & PTE_P));
+    // *pte = 0xb8000 | PTE_P | PTE_W | PTE_U;
+
+    // test_pgdir(utable[USER_VGA]->pgdir);
+    memmove(utable[USER_KBD]->name, "kbd", 4);
+    memmove(utable[USER_VGA]->name, "vga", 4);
 
     spinlock_release(&ptable.lock);
     //proc_stat();
@@ -109,7 +113,7 @@ ucode_load(struct proc *p, uint8_t *binary)
 	// One page for initial stack at va USTACKTOP - PGSIZE.
     vm_alloc(p->pgdir, USTKTOP - PGSIZE, PGSIZE);
 
-    ipc_init(p);
+    //ipc_init(p);
 
     cprintf("finish ucode loading.\n");
 }

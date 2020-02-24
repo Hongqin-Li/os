@@ -4,10 +4,12 @@
 # -fno-pie -fno-pic remove .got and data.rel sections, `objdump -t obj/kernel.o | sort` to see the difference
 # -MMD -MP generate .d files
 # -Wl,--build-id=none to remove .note.gnu.build-id section, making the multiboot header in first 4KB
+# -fno-omit-frame-pointer to make sure that %ebp is saved on stack, which can be used for tracing
 CC := gcc -m32
 CC += -Werror -gstabs 
 CC += -fno-pie -fno-pic -fno-stack-protector 
 CC += -static -fno-builtin -nostdlib
+CC += -fno-omit-frame-pointer
 CC += -Wl,--build-id=none
 
 LD := ld -m elf_i386
@@ -76,7 +78,7 @@ qemu-nox: $(KERN_ELF)
 	qemu-system-i386 -kernel $< -serial mon:stdio -m $(RAM) -smp $(NCPU) -nographic
 qemu-img: $(IMG)
 	qemu-system-i386 -cdrom $< -serial mon:stdio -m $(RAM) -smp $(NCPU)
-qemu-gdb: $(IMG)
+qemu-gdb: $(KERN_ELF)
 	qemu-system-i386 -kernel $< -serial mon:stdio -m $(RAM) -smp $(NCPU) -S -gdb tcp::1234
 gdb: 
 	gdb -n -x .gdbinit

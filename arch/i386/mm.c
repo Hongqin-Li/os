@@ -3,9 +3,12 @@
 #include <kern/locks.h>
 #include <kern/mm.h>
 #include <memlayout.h>
+#include <arch/i386/inc.h>
 
+// Phsical memory top(pa) and kernel end(va)
 void *PHYSTOP, *kend;
-static struct buddy_system *bsp;
+
+//static struct buddy_system *bsp;
 static struct freelist freelist;
 static struct spinlock memlock;
 
@@ -31,7 +34,7 @@ kalloc(size_t sz)
     spinlock_acquire(&memlock);
     //void *p = buddy_alloc(bsp, sz);
     void *p = freelist_alloc(&freelist);
-    assert(p)
+    assert((int)p);
 
     #ifdef DEBUG
     cprintf("kalloc: p: 0x%x, sz: %d\n", p, sz);

@@ -40,13 +40,20 @@ _start:
 
 pgdir_init:
     cmp     $1, REG_CNT
-    je      map2
+    je      map1
     cmp     $2, REG_CNT
+    je      map2
+    cmp     $3, REG_CNT
     je      update_kend
+map0:
+    mov     $0, REG_PDX
+    mov     $0, REG_PA
+    mov     $RELOC(end), REG_PA_END
+    jmp     loop
 map1: 
     mov     $(KERNBASE>>PDXSHIFT), REG_PDX
     mov     $0, REG_PA
-    mov     RELOC(PHYSTOP), REG_PA_END
+    #mov     RELOC(PHYSTOP), REG_PA_END
     mov     $RELOC(DEVSPACE), REG_PA_END
     jmp     loop
 map2:
@@ -116,6 +123,7 @@ relocated:
 
 	# Set the stack pointer and call into C
 	mov     $(bootstack+KSTKSIZE), %esp
+    xor     %ebp, %ebp       # Set %ebp to NULL, used for tracing
     call    kernel_main
 
 	# Should never get here, but in case we do, just spin.

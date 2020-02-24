@@ -29,7 +29,6 @@ alltraps:
 # Return falls through to trapret...
 .globl trapret
 trapret:
-    call tss_init
 	# Restore registers.
     popal
     popl %gs

@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <shell/kbd.h>
+#include <kbd/kbd.h>
 #include <x86.h>
 #include <sys.h>
 
@@ -12,12 +12,18 @@ int kbd_getc();
 void
 umain(int argc, char **argv) 
 {
-    cprintf("shell hello\n");
+    cprintf("kbd hello: pid %x\n", USER_PID(USER_KBD));
+    int vga_pid = USER_PID(USER_VGA);
+    struct mailbox *mb = (void *)USTKTOP;
     while (1) {
         int cmd = sys_recv(0, 0);
-        for (int c; (c = kbd_getc()) != -1; ) 
-            if (c)
-                cprintf("%c", c);
+        for (int c; (c = kbd_getc()) != -1; ) {
+            if (c) {
+                mb->content[0] = c;
+                sys_send(vga_pid, 1);
+                //cprintf("%c", c);
+            }
+        }
     }
 }
 

@@ -1,6 +1,9 @@
 // Virtual Memory and X86's Segmentation
 #include <arch/i386/inc.h>
 
+pde_t entry_pgdir[NPDENTRIES] __attribute__((__aligned__(PGSIZE)));
+
+
 // Set up GDT for this CPU
 void 
 seg_init()
@@ -51,7 +54,7 @@ tss_init()
 pte_t *
 pgdir_walk(pde_t *pgdir, const void *va, int32_t alloc)
 {
-    assert(pgdir);
+    assert((int)pgdir);
     pde_t *pde_p = &pgdir[PDX(va)];
     pte_t *pgt;
     if (*pde_p & PTE_P) 
