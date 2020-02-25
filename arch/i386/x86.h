@@ -149,4 +149,12 @@ lcr3(uint32_t val)
     asm volatile("movl %0,%%cr3" : : "r" (val));
 }
 
+static inline uint64_t
+rdtsc()
+{
+    uint64_t x;
+    __asm__ volatile (".byte 0x0f, 0x31" : "=A" (x));
+    return x;
+}
+
 #endif

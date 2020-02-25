@@ -19,9 +19,7 @@ struct proc {
     int magic;
     pde_t *pgdir;
     int size;
-    char name[20];
 
-    int state;
     struct list_head hlist;
     struct list_head wait_list;
     struct list_head pos;       // Scheduled by whom, either empty

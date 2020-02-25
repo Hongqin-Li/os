@@ -72,14 +72,16 @@ $(IMG): $(KERN_ELF)
 
 RAM := 4 # MB
 NCPU := 4
+QEMU := qemu-system-i386 -serial mon:stdio -m $(RAM) -smp $(NCPU)
+
 qemu: $(KERN_ELF) 
-	qemu-system-i386 -kernel $< -serial mon:stdio -m $(RAM) -smp $(NCPU)
+	$(QEMU) -kernel $<
 qemu-nox: $(KERN_ELF) 
-	qemu-system-i386 -kernel $< -serial mon:stdio -m $(RAM) -smp $(NCPU) -nographic
+	$(QEMU) -kernel $< -nographic
 qemu-img: $(IMG)
-	qemu-system-i386 -cdrom $< -serial mon:stdio -m $(RAM) -smp $(NCPU)
+	$(QEMU) -cdrom $<
 qemu-gdb: $(KERN_ELF)
-	qemu-system-i386 -kernel $< -serial mon:stdio -m $(RAM) -smp $(NCPU) -S -gdb tcp::1234
+	$(QEMU) -kernel $< -S -gdb tcp::1234
 gdb: 
 	gdb -n -x .gdbinit
 

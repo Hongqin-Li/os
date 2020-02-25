@@ -55,20 +55,16 @@ user_init()
 {
     spinlock_acquire(&ptable.lock);
 
-    //LOAD_USER(test);
-    //LOAD_USER(fs);
+    LOAD_USER(test);
+    LOAD_USER(fs);
 
     utable[USER_KBD] = LOAD_DRIVER(kbd); // Keyboard Driver
     utable[USER_VGA] = LOAD_DRIVER(vga); // VGA Driver
 
-    // CGA Memory
-    // pte_t *pte = pgdir_walk(utable[USER_VGA]->pgdir, (void *)0xb8000, 1);
-    // assert(!(*pte & PTE_P));
-    // *pte = 0xb8000 | PTE_P | PTE_W | PTE_U;
-
-    // test_pgdir(utable[USER_VGA]->pgdir);
-    memmove(utable[USER_KBD]->name, "kbd", 4);
-    memmove(utable[USER_VGA]->name, "vga", 4);
+    // Map CGA Memory for VGA driver
+    pte_t *pte = pgdir_walk(utable[USER_VGA]->pgdir, (void *)0xb8000, 1);
+    assert(!(*pte & PTE_P));
+    *pte = 0xb8000 | PTE_P | PTE_W | PTE_U;
 
     spinlock_release(&ptable.lock);
     //proc_stat();

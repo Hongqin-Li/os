@@ -22,11 +22,9 @@ umain(int argc, char **argv)
     vga_init();
     while (1) {
         int sender = sys_recv(kbd_pid, sizeof(mb->content));
-        //cprintf("sender: %x\n", sender);
         assert(mb->len == 1);
         for (int i = 0; i < mb->len; i ++) {
-            //cprintf("%c", mb->content[i]);
-            //vga_putc(mb->content[i]);
+            vga_putc(mb->content[i]);
         }
     }
 }
@@ -109,7 +107,7 @@ cgaputc(int c)
 
 void
 vga_putc(char c) {
-    //uart_putc(c);
+    uart_putc(c);
     cgaputc(c);
 }
 

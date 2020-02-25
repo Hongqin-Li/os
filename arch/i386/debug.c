@@ -7,6 +7,7 @@ struct stackframe {
   uint32_t eip;
 };
 
+// Tracing ebp chain on stack
 void
 trace(uint32_t max_frames)
 {

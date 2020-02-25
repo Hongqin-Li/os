@@ -68,6 +68,14 @@ pgdir_walk(pde_t *pgdir, const void *va, int32_t alloc)
     return &pgt[PTX(va)];
 }
 
+// Allocate a page table for kernel part.
+pde_t *
+kvm_init()
+{
+    pde_t *pgdir = kalloc(PGSIZE);
+    memmove(pgdir, entry_pgdir, sizeof(entry_pgdir));
+    return pgdir;
+}
 
 // Switch h/w page table register to the page table.
 void
@@ -98,7 +106,7 @@ vm_alloc(pde_t *pgdir, uint32_t va, uint32_t len)
 }
 
 // Unmap len bytes beginning at virtual address va 
-// All covered pages will be freed.
+// All intersected pages will be freed.
 int
 vm_dealloc(pde_t *pgdir, uint32_t va, uint32_t len)
 {
@@ -122,14 +130,14 @@ vm_dealloc(pde_t *pgdir, uint32_t va, uint32_t len)
     }
 }
 
-
 // Copy and allocate a new page table 
-// that remains the same mapping.
+// that remains the same user data.
 // Reusing the kernel space.
 pde_t *
 vm_fork(pde_t *opgdir)
 {
-    pde_t *pgdir = kalloc(PGSIZE);
+    //pde_t *pgdir = kalloc(PGSIZE);
+    pde_t *pgdir = kvm_init();
     pde_t *pde = pgdir, *opde = opgdir;
     for (; opde < opgdir + PDX(KERNBASE); opde ++, pde ++) {
         if (*opde & PTE_P) {
@@ -147,7 +155,7 @@ vm_fork(pde_t *opgdir)
         else
             *pde = 0;
     }
-    memmove(pde, opde, (uint32_t)&opgdir[NPDENTRIES] - (uint32_t)opde);
+    //memmove(pde, opde, (uint32_t)&opgdir[NPDENTRIES] - (uint32_t)opde);
     return pgdir;
 }
 

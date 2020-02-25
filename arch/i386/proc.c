@@ -115,11 +115,9 @@ swtchp(struct proc *p)
     struct proc *tp = thisproc();
     vm_switch(p->pgdir);
     thiscpu()->proc = p;
-    cprintf("swtchp: cpu %d, %x(%s) -> %x(%s)\n", cpuidx(), tp, tp->name, p, p->name);
     tss_init();
+    //cprintf("swtchp: cpu %d, %x(%s) -> %x(%s)\n", cpuidx(), tp, tp->name, p, p->name);
     swtch(&tp->context, p->context);
-    thiscpu()->proc = tp;
-    vm_switch(tp->pgdir);
 }
 
 // Free all zombie proc.
@@ -157,9 +155,7 @@ inline void
 sleep()
 {
     list_init(&thisproc()->pos);
-    assert(!(read_eflags() & FL_IF));
     swtchp(&thiscpu()->scheduler);
-    assert(!(read_eflags() & FL_IF));
 }
 
 // Caller should hold ptable.lock
@@ -179,13 +175,14 @@ void
 yield(struct proc *p)
 {
     struct proc *tp = thisproc();
+    assert(PROC_EXISTS(p));
     list_push_back(&p->wait_list, &tp->pos);
     if (list_empty(&p->pos)) {
         p->pos.next = 0;
         swtchp(p);
     }
-    else swtchp(&thiscpu()->scheduler);
-    //swtchp(list_empty(&p->pos) ? p: &thiscpu()->scheduler);
+    else 
+        swtchp(&thiscpu()->scheduler);
 }
 
 // Serve and return the first process in waiting list
@@ -196,9 +193,11 @@ serve()
     struct proc *tp = thisproc();
     while(list_empty(&tp->wait_list)) 
         sleep();
-    assert(!list_empty(&tp->pos));
     struct proc *p = CONTAINER_OF(list_front(&tp->wait_list), struct proc, pos);
-    assert(p != thisproc() && p != &thiscpu()->scheduler);
+
+    assert(!list_empty(&tp->pos));
+    assert(PROC_EXISTS(p) && p != thisproc() && p != &thiscpu()->scheduler);
+
     list_drop(&p->pos);
     list_push_back(&ptable.ready_list, &p->pos);
     return p;
@@ -229,14 +228,12 @@ exit()
 }
 
 void
-scheduler() {
+scheduler()
+{
     // Init the scheduler process
     struct proc *tp = &thiscpu()->scheduler;
     tp->pgdir = entry_pgdir;
     thiscpu()->proc = tp;
-    memmove(tp->name, "sched", 5);
-    tp->name[5] = '0' + cpuidx();
-    tp->name[6] = '\0';
 
     while(1) {
         cli();
@@ -268,10 +265,7 @@ sbrk(int n)
         assert(s >= 0);
         vm_dealloc(tp->pgdir, USTKTOP + PGSIZE + s, -n);
     }
-    //vm_switch(tp->pgdir);
-    cprintf("sbrk: proc %x, n %d, size(%d -> %d), heap(%x~%x)\n", tp, n, sz, sz+n, USTKTOP+PGSIZE, USTKTOP+PGSIZE+sz+n);
     tp->size = sz + n;
-    //test_pgdir(tp->pgdir);
     return (void *)USTKTOP+PGSIZE+sz;
 }
 
