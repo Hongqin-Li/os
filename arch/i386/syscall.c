@@ -7,7 +7,7 @@
 static int
 sys_cputs(char *s, size_t len)
 {
-    if (uvm_check(thisproc()->pgdir, s, len)) 
+    if (uvm_check(thisproc()->vm, s, len)) 
         return 0;
     //cprintf("sys_cputs: %x ~ %x ", s, s + len);
     for (int i = 0; i < len; i ++) 
@@ -42,18 +42,30 @@ sys_fork() {
 static int
 sys_sleep()
 {
-    spinlock_acquire(&ptable.lock);
-    sleep();
-    spinlock_release(&ptable.lock);
+    panic("sys_sleep: TODO\n");
+    acquire(&ptable.lock);
+    //sleep();
+    release(&ptable.lock);
     return 0;
 }
 
 static int
 sys_yield() {
-    spinlock_acquire(&ptable.lock);
+    acquire(&ptable.lock);
     yield(0);
-    spinlock_release(&ptable.lock);
+    release(&ptable.lock);
     return 0;
+}
+
+int
+sys_send(int pid, int cnt)
+{
+    send(pid, cnt);
+}
+int
+sys_recv(int pid, int cnt)
+{
+    recv(pid, cnt);
 }
 
 // Dispatches to the correct kernel function, passing the arguments.

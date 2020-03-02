@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <string.h>
-#include <kern/locks.h>
 #include <fs/inode.h>
 
 int rootinum;

@@ -2,6 +2,7 @@
 #include <inc/sys.h>
 #include <arch/i386/inc.h>
 #include <traps.h>
+#include <kern/inc.h>
 
 struct context {
 	uint32_t edi;
@@ -14,7 +15,7 @@ struct context {
 struct ptable ptable;
 
 void trapret(); // In trapasm.S
-void swtch(struct context **old, struct context *new);// In swtch.S
+void swtchc(struct context **old, struct context *new);// In swtchc.S
 
 struct proc *
 thisproc()
@@ -22,14 +23,57 @@ thisproc()
     return thiscpu()->proc;
 }
 
-void 
-proc_init()
+struct proc *
+thisched()
 {
-    for (int i = 0; i < PROC_BUCKET_SIZE; i ++)
-        list_init(&ptable.hlist[i]);
-    list_init(&ptable.ready_list);
-    list_init(&ptable.zombie_list);
+    return &thiscpu()->scheduler;
 }
+
+// Init the scheduler process
+void
+sched_init()
+{
+    struct proc *tp = &thiscpu()->scheduler;
+    tp->vm = (struct vm *)entry_pgdir;
+    thiscpu()->proc = tp;
+}
+
+void
+scheduler()
+{
+    while(1) {
+        cli();
+        sched();
+        sti();
+    }
+}
+
+void
+reap(struct proc *p)
+{
+    cprintf("proc_free: %x\n", p);
+    vm_free(p->vm);
+    kfree((void *)p + sizeof(struct proc) - KSTKSIZE);
+
+    assert(!list_find(&ptable.hlist[PROC_HASH(p)], &p->hlist));
+    assert(!list_find(&ptable.ready_list, &p->hlist));
+    assert(!list_find(&ptable.zombie_list, &p->hlist));
+    assert(list_empty(&p->wait_list));
+}
+
+// Switch to process p
+// Call should hold ptable.lock
+void
+swtch(struct proc *p)
+{   
+    struct proc *tp = thisproc();
+    vm_switch(p->vm);
+    thiscpu()->proc = p;
+    tss_init();
+    //cprintf("swtch: cpu %d, %x -> %x\n", cpuidx(), tp, p);
+    swtchc(&tp->context, p->context);
+}
+
 
 void
 forkret()
@@ -37,10 +81,10 @@ forkret()
     cprintf("forkret\n");
     ipc_init(thisproc());
     tss_init();
-    spinlock_release(&ptable.lock);
+    release(&ptable.lock);
 }
 
-//  Initial Kerenl 
+//  Initial Kernel 
 //  Stack Layout     
 //
 //  +------------+  top
@@ -54,9 +98,9 @@ forkret()
 //  +------------+
 //  |  ...       |
 //  +------------+   bottom
+// Caller should hold ptable.lock
 struct proc *
-proc_alloc()
-{
+proc_alloc(uint32_t entry, int driver) {
     struct hackframe {
         struct context context;
         void *retaddr;
@@ -67,234 +111,96 @@ proc_alloc()
     hf = (void *)kalloc(KSTKSIZE) + KSTKSIZE - sizeof(*hf);
 
     struct trapframe *tf = &hf->tf;
-    tf->ds = SEG_SELECTOR(SEG_UDATA, TI_GDT, DPL_USER);
-    tf->cs = SEG_SELECTOR(SEG_UCODE, TI_GDT, DPL_USER);
-    tf->es = tf->ss = tf->fs = tf->gs = tf->ds;
+
+    if (driver) {
+        tf->ds = SEG_SELECTOR(SEG_DDATA, TI_GDT, PL_DRIVER); 
+        tf->cs = SEG_SELECTOR(SEG_DCODE, TI_GDT, PL_DRIVER); 
+        tf->eflags = FL_IF | FL_IOPL(PL_DRIVER);   
+    }
+    else {
+        tf->ds = SEG_SELECTOR(SEG_UDATA, TI_GDT, PL_USER);
+        tf->cs = SEG_SELECTOR(SEG_UCODE, TI_GDT, PL_USER); 
+        tf->eflags = FL_IF | FL_IOPL(PL_KERN);  
+    }
+    tf->es = tf->ss = tf->fs = tf->gs = tf->ds;        
     tf->esp = USTKTOP;
-    tf->eflags = FL_IF;
-    tf->eip = 0;// will be initialized by ucode_load
     tf->err = 0;
+    tf->eip = entry; // To be initialized
 
     hf->retaddr = trapret;
     hf->context.eip = (uint32_t) forkret;
 
     struct proc *p = &hf->p;
     p->context = &hf->context; // stack pointer
-    p->tf = tf;
     p->magic = PROC_MAGIC;
     p->size = 0;
-    //p->pgdir = vm_fork(entry_pgdir);
+    p->vm = vm_init();
 
     list_init(&p->pos);
-    // insert to hash table
     list_push_back(&ptable.hlist[PROC_HASH(p)], &p->hlist);
     list_init(&p->wait_list);
 
-    cprintf("proc_alloc: 0x%x, hash: %d\n", p, PROC_HASH(p));
     return p;
 }
 
-static void
-proc_free(struct proc *p)
+struct proc *
+spawnx(struct elfhdr *elf, int driver)
 {
-    cprintf("proc_free: %x\n", p);
-    vm_free(p->pgdir);
-    kfree((void *)p + sizeof(struct proc) - KSTKSIZE);
+    if(elf->magic != ELF_MAGIC)
+        panic("Not an ELF.");
 
-    assert(!list_find(&ptable.hlist[PROC_HASH(p)], &p->hlist));
-    assert(!list_find(&ptable.ready_list, &p->hlist));
-    assert(!list_find(&ptable.zombie_list, &p->hlist));
-    assert(list_empty(&p->wait_list));
-}
+    struct proghdr *ph = (struct proghdr*)((uint8_t*)elf + elf->phoff);
+    struct proghdr *eph = ph + elf->phnum;
 
-// Switch to process p
-// Call should hold ptable.lock
-void
-swtchp(struct proc *p)
-{   
-    struct proc *tp = thisproc();
-    vm_switch(p->pgdir);
-    thiscpu()->proc = p;
-    tss_init();
-    //cprintf("swtchp: cpu %d, %x(%s) -> %x(%s)\n", cpuidx(), tp, tp->name, p, p->name);
-    swtch(&tp->context, p->context);
-}
+    struct proc *p = proc_alloc(elf->entry, driver);
 
-// Free all zombie proc.
-// Caller should hold ptable.lock.
-void
-reap()
-{
-    while(!list_empty(&ptable.zombie_list)) {
-        struct proc *zp = CONTAINER_OF(list_front(&ptable.zombie_list), struct proc, pos);
-        list_drop(&zp->pos);
-        proc_free(zp);
+    vm_switch(p->vm);
+    // Load each program segment (ignores ph flags).
+    for(; ph < eph; ph++) {
+        if (ph->type != ELF_PROG_LOAD)
+            continue;
+
+        assert(ph->va + ph->memsz > ph->va);
+        assert(ph->va + ph->memsz <= KERNBASE);
+
+        vm_alloc(p->vm, ph->va, ph->memsz);
+
+        //copy to proc's virtual memory
+        memmove((void *)ph->va, (void *)elf + ph->offset, ph->filesz);
+        //BSS initialization
+        if(ph->memsz > ph->filesz) 
+            memset((void *)ph->va + ph->filesz, 0, ph->memsz - ph->filesz);
     }
+    vm_switch(thisproc()->vm);
+
+	// One page for initial stack at va USTACKTOP - PGSIZE.
+    vm_alloc(p->vm, USTKTOP - PGSIZE, PGSIZE);
+
+    list_push_back(&ptable.ready_list, &p->pos);
+    cprintf("spawnx: finish ucode loading.\n");
+    return p;
 }
 
 int
 fork()
 {
-    spinlock_acquire(&ptable.lock);
+    panic("fork: not implemented\n");
+    acquire(&ptable.lock);
     struct proc *tp = thisproc();
-    struct proc *p = proc_alloc();
+    //struct proc *p = proc_alloc(0);
 
-    p->pgdir = vm_fork(tp->pgdir);
-    *p->tf = *tp->tf;
+    /*
+    p->vm = vm_fork(tp->vm);
+    //*p->tf = *tp->tf;
     p->tf->eax = 0; // fork return 0 in child
 
     ipc_init(p);
 
     list_push_back(&ptable.ready_list, &p->pos);
-    spinlock_release(&ptable.lock);
-    return (int)p;
+    */
+    release(&ptable.lock);
+    return 0;
+    //return (int)p;
 }
 
-// Caller should hold ptable.lock
-inline void
-sleep()
-{
-    list_init(&thisproc()->pos);
-    swtchp(&thiscpu()->scheduler);
-}
-
-// Caller should hold ptable.lock
-inline void
-wakeup(struct proc *p)
-{
-    if (PROC_EXISTS(p) && list_empty(&p->pos)) {
-        assert(p != thisproc() && p != &thiscpu()->scheduler);
-        list_push_front(&ptable.ready_list, &p->pos);
-    }
-}
-
-// Sleep and wait for process p.
-// Direct swtch if possible.
-// Caller should hold ptable.lock
-void
-yield(struct proc *p)
-{
-    struct proc *tp = thisproc();
-    assert(PROC_EXISTS(p));
-    list_push_back(&p->wait_list, &tp->pos);
-    if (list_empty(&p->pos)) {
-        p->pos.next = 0;
-        swtchp(p);
-    }
-    else 
-        swtchp(&thiscpu()->scheduler);
-}
-
-// Serve and return the first process in waiting list
-// Caller should hold ptable.lock
-struct proc *
-serve()
-{
-    struct proc *tp = thisproc();
-    while(list_empty(&tp->wait_list)) 
-        sleep();
-    struct proc *p = CONTAINER_OF(list_front(&tp->wait_list), struct proc, pos);
-
-    assert(!list_empty(&tp->pos));
-    assert(PROC_EXISTS(p) && p != thisproc() && p != &thiscpu()->scheduler);
-
-    list_drop(&p->pos);
-    list_push_back(&ptable.ready_list, &p->pos);
-    return p;
-}
-
-void
-exit() 
-{
-    spinlock_acquire(&ptable.lock);
-    struct proc *tp = thisproc();
-    assert(PROC_EXISTS(tp));
-
-    // Wakeup waiters
-    struct proc *wp;
-    LIST_FOREACH_ENTRY(wp, &tp->wait_list, pos) {
-        // FIXME
-        wakeup(wp);
-    }
-
-    cprintf("exit: proc 0x%x exit.\n", tp);
-    proc_stat();
-
-    list_drop(&tp->hlist);
-    list_push_back(&ptable.zombie_list, &tp->pos);
-    swtchp(&thiscpu()->scheduler);
-
-    panic("exit: return\n");
-}
-
-void
-scheduler()
-{
-    // Init the scheduler process
-    struct proc *tp = &thiscpu()->scheduler;
-    tp->pgdir = entry_pgdir;
-    thiscpu()->proc = tp;
-
-    while(1) {
-        cli();
-        spinlock_acquire(&ptable.lock);
-        if (!list_empty(&ptable.ready_list)) {
-            struct proc *p = CONTAINER_OF(list_front(&ptable.ready_list), struct proc, pos);
-            list_drop(&p->pos);
-            assert(!list_empty(&p->pos));
-            swtchp(p);
-        }
-        else reap();
-        spinlock_release(&ptable.lock);
-        sti();
-    }
-}
-
-void *
-sbrk(int n)
-{
-    struct proc *tp = thisproc();
-    int sz = tp->size;
-    assert(sz >= 0);
-    if (n > 0) 
-        vm_alloc(tp->pgdir, USTKTOP + PGSIZE + sz, n);// PGSIZE for mailbox
-    else if (n < 0) {
-        if (sz + n < 0) 
-            n = -sz;
-        int s = ROUNDUP(sz + n, PGSIZE);
-        assert(s >= 0);
-        vm_dealloc(tp->pgdir, USTKTOP + PGSIZE + s, -n);
-    }
-    tp->size = sz + n;
-    return (void *)USTKTOP+PGSIZE+sz;
-}
-
-void
-proc_stat()
-{
-    struct proc *p;
-    cprintf("ready_list: ");
-    LIST_FOREACH_ENTRY(p, &ptable.ready_list, pos) {
-        assert(PROC_EXISTS(p));
-        cprintf("0x%x", p);
-        if (!list_empty(&p->wait_list)) {
-            cprintf("(");
-            struct proc *wp;
-            LIST_FOREACH_ENTRY(wp, &p->wait_list, pos) {
-                cprintf("0x%x, ", p);
-            }
-            cprintf(")");
-        }
-        cprintf(", ");
-    }
-    cprintf("\n");
-    cprintf("zombie_list: ");
-    LIST_FOREACH_ENTRY(p, &ptable.zombie_list, pos) {
-        cprintf("0x%x, ", p);
-        assert(!PROC_EXISTS(p));
-        assert(p->magic == PROC_MAGIC);
-        assert(list_empty(&p->wait_list));
-    }
-    cprintf("\n");
-}
 

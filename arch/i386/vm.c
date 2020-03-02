@@ -3,7 +3,6 @@
 
 pde_t entry_pgdir[NPDENTRIES] __attribute__((__aligned__(PGSIZE)));
 
-
 // Set up GDT for this CPU
 void 
 seg_init()
@@ -69,25 +68,26 @@ pgdir_walk(pde_t *pgdir, const void *va, int32_t alloc)
 }
 
 // Allocate a page table for kernel part.
-pde_t *
-kvm_init()
+struct vm *
+vm_init()
 {
     pde_t *pgdir = kalloc(PGSIZE);
     memmove(pgdir, entry_pgdir, sizeof(entry_pgdir));
-    return pgdir;
+    return (struct vm *)pgdir;
 }
 
 // Switch h/w page table register to the page table.
 void
-vm_switch(pde_t *pgdir)
+vm_switch(struct vm *pgdir)
 {
     lcr3(V2P(pgdir));
 }
 
 // Map len bytes beginning at virtual address va 
 void
-vm_alloc(pde_t *pgdir, uint32_t va, uint32_t len)
+vm_alloc(struct vm *vm, uint32_t va, uint32_t len)
 {
+    pde_t *pgdir = (void *)vm;
     uint32_t ve;
     va = ROUNDDOWN(va, PGSIZE);
     ve = ROUNDDOWN(va + len - 1, PGSIZE);
@@ -108,8 +108,9 @@ vm_alloc(pde_t *pgdir, uint32_t va, uint32_t len)
 // Unmap len bytes beginning at virtual address va 
 // All intersected pages will be freed.
 int
-vm_dealloc(pde_t *pgdir, uint32_t va, uint32_t len)
+vm_dealloc(struct vm *vm, uint32_t va, uint32_t len)
 {
+    pde_t *pgdir = (void *)vm;
     uint32_t ve;
     va = ROUNDDOWN(va, PGSIZE);
     ve = ROUNDDOWN(va + len - 1, PGSIZE);
@@ -130,14 +131,15 @@ vm_dealloc(pde_t *pgdir, uint32_t va, uint32_t len)
     }
 }
 
+/*
 // Copy and allocate a new page table 
 // that remains the same user data.
 // Reusing the kernel space.
-pde_t *
-vm_fork(pde_t *opgdir)
+struct vm *
+vm_fork(struct vm *vm)
 {
     //pde_t *pgdir = kalloc(PGSIZE);
-    pde_t *pgdir = kvm_init();
+    pde_t *pgdir = (void *)vm_init();
     pde_t *pde = pgdir, *opde = opgdir;
     for (; opde < opgdir + PDX(KERNBASE); opde ++, pde ++) {
         if (*opde & PTE_P) {
@@ -156,13 +158,15 @@ vm_fork(pde_t *opgdir)
             *pde = 0;
     }
     //memmove(pde, opde, (uint32_t)&opgdir[NPDENTRIES] - (uint32_t)opde);
-    return pgdir;
+    return (void *)pgdir;
 }
+*/
 
 // Free the user space of a page table
 void 
-vm_free(pde_t *pgdir)
+vm_free(struct vm *vm)
 {
+    pde_t *pgdir = (void *)vm;
     for (int i = 0; i < PDX(KERNBASE); i ++) {
         if (pgdir[i] & PTE_P) {
             pte_t *pgt = P2V(PTE_ADDR(pgdir[i]));
@@ -179,9 +183,9 @@ vm_free(pde_t *pgdir)
 // Check that the user has permission to read memory [s, s+len).
 // Return 0 if valid else 1.
 int 
-uvm_check(pde_t *pgdir, char *s, uint32_t len)
+uvm_check(struct vm *vm, char *s, uint32_t len)
 {
-
+    pde_t *pgdir = (void *)vm;
     uint32_t va = ROUNDDOWN((uint32_t)s, PGSIZE);
     uint32_t ve = ROUNDDOWN((uint32_t)s + len - 1, PGSIZE);
     for (uint32_t p = va; p <= ve; p += PGSIZE) {
@@ -193,32 +197,11 @@ uvm_check(pde_t *pgdir, char *s, uint32_t len)
     return 0;
 }
 
-// Deallocate user pages to bring the process size from oldsz to
-// newsz.  oldsz and newsz need not be page-aligned, nor does newsz
-// need to be less than oldsz.  oldsz can be larger than the actual
-// process size.  Returns the new process size.
-int
-uvm_dealloc(pde_t *pgdir, uint32_t oldsz, uint32_t newsz)
-{
-    if (newsz >= oldsz)
-        return oldsz;
-
-    for (uint32_t a = ROUNDUP(newsz, PGSIZE); a < oldsz; a += PGSIZE) {
-        pte_t *pte = pgdir_walk(pgdir, (char*)a, 0);
-        if (*pte & PTE_P) {
-            kfree(P2V(PTE_ADDR(*pte)));
-            *pte = 0;
-        }
-    }
-    return newsz;
-}
-
-
 void 
 vm_test()
 {
-    pde_t *pgdir = vm_fork(entry_pgdir);
-    test_pgdir(pgdir);
+    //pde_t *pgdir = vm_fork(entry_pgdir);
+    //test_pgdir(pgdir);
 }
 
 // Print and test a page table, showing something like 0xf0000000...0xfe000000 -> 0x0...0xe000000

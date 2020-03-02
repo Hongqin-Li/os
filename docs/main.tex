@@ -1,0 +1,138 @@
+%
+% File acl2020.tex
+%
+%% Based on the style files for ACL 2020, which were
+%% Based on the style files for ACL 2018, NAACL 2018/19, which were
+%% Based on the style files for ACL-2015, with some improvements
+%%  taken from the NAACL-2016 style
+%% Based on the style files for ACL-2014, which were, in turn,
+%% based on ACL-2013, ACL-2012, ACL-2011, ACL-2010, ACL-IJCNLP-2009,
+%% EACL-2009, IJCNLP-2008...
+%% Based on the style files for EACL 2006 by 
+%%e.agirre@ehu.es or Sergi.Balari@uab.es
+%% and that of ACL 08 by Joakim Nivre and Noah Smith
+
+\documentclass[11pt,a4paper]{article}
+\usepackage[hyperref]{acl2020}
+\usepackage{times}
+\usepackage{latexsym}
+\renewcommand{\UrlFont}{\ttfamily\small}
+
+% This is not strictly necessary, and may be commented out,
+% but it will improve the layout of the manuscript,
+% and will typically save some space.
+\usepackage{microtype}
+
+\aclfinalcopy % Uncomment this line for the final submission
+%\def\aclpaperid{***} %  Enter the acl Paper ID here
+
+%\setlength\titlebox{5cm}
+% You can expand the titlebox if you need extra space
+% to show all the authors. Please do not make the titlebox
+% smaller than 5cm (the original size); we will check this
+% in the camera-ready version and ask you to change it back.
+
+\newcommand\BibTeX{B\textsc{ib}\TeX}
+
+\title{Microkernel Design and Implementation}
+
+\author{Hongqin Li\\
+Fudan University\\
+\texttt{17307130156@fudan.edu.cn}\\
+}
+
+\date{}
+
+
+\begin{document}
+\maketitle
+%\begin{abstract}\end{abstract}
+
+\section{Introduction}
+We present a microkernel with memory management, process management and IPC. The file system and drivers are implemented as user space program like most microkernel operating systems. This paper will demonstrate our design of the main components of this experimental microkernel operation system.
+
+\section{Kernel Design}
+
+\subsection{Memory Allocator}
+A typical microkernel may remove memory management from kernel and only keep a simple pager. In our design, this simple pager is also the memory allocator for simplicity and efficiency. 
+Since we only need to provide minimal virtual address space management, memory allocator itself can be very simple. In x86, this is done by allocating and modifying page directory or table, which consuming the memory in granularity of pages.
+Thus, instead of a buddy system used in many monolithic kernel, we adopt the free list approach, simply maintaining a linked list of free physical pages. It is perhaps the most efficient allocator for our simple kernel and adequate to build up a microkernel.
+
+%\subsection{Virtual Address Space}
+
+\subsection{Scheduler}
+
+We use a queue-based approach to design our scheduler model, since queue is easy to implement and quite suitable for preemptive scheduler\footnote{\texttt{arch/i386/proc.c}}. In our  model, the possible process states includes running, waiting, zombie. Notice that the well-known sleeping state is just a special case of waiting state and can be interpreted as waiting for anyone. And our motivation is to see the waiting model as analogous to a Client-Server model. The waiting client waits for server to reschedule it. A server will serve a client by push it back into the scheduler's queue, and perform some operations for communication. 
+
+\paragraph{Running}
+In running state, which means a process is using CPU, the process will consume its CPU times. And once the times are used up, it will be pushed back into the scheduler's queue.
+
+\paragraph{Waiting}
+A process can be waiting for another process or any other processes to reschedule it. Upon waiting, it cannot be scheduled by anyone except the one it is waiting for.
+
+\paragraph{Zombie}
+A process in this state cannot be aware by any other processes. And the next step is to be reaped by the scheduler, i.e. reclaim the pages that has been allocated to it.
+
+\paragraph{}
+The running and zombie states are rather easier to deal with, while the waiting state consist of several cases and need to be carefully designed. In our model, each process has its own position representing which queue it is currently waiting in. The position is implemented as a list item which can be used to insert into other queues or perform self-insertion (being like a single-item cyclic list, representing a sleeping state\footnote{\texttt{sleep()}}). Since we don't have to check certain process's state (just need to get processes of certain state), we maintain no explicit state information but the queues listed below.
+
+\paragraph{Ready Queue}
+A global queue of processes waiting to be scheduled by the scheduler. 
+
+\paragraph{Zombie Queue}
+A global queue of processes waiting to be freed. 
+
+\paragraph{Wait Queue}
+Per-process queue for other processes to wait in, residing in PCB (Process Control Block)\footnote{\texttt{struct proc}} of each process.
+
+\subsection{IPC}
+Inter Process Communication (IPC) is one of the characteristics of microkernel, which is frequently used for communication between user programs and user-space servers. Due to the importance of IPC, the design of our kernel consistently aim to maximizing its performance.To speed up IPC, every process have a special page in user-space for IPC, called \emph{mailbox}\footnote{\texttt{inc/sys.h}}. It is preallocated on top of user stack by kernel on creating the process in order to avoid page fault and avoid multiple copies during IPC in kernel\footnote{\texttt{ipc\_init()}}. Besides, to locate the destination process, we use a hash table to check the validation or existence of the destination. Some microkernel such as \textsc{L4} divide the free memory into chunks of fixed size and manipulate them as an array, then the locating operation can be easily done by index into the array. It seems a faster approach and maybe we will try it in the future.
+
+\paragraph{Send}
+A synchronous send operation will block the sender if the destination process is not waiting for anyone. Otherwise, the sender can directly switch to the destination process quickly. In either cases, the sender will insert it position list item into the destination process's wait list, which will be dropped by the receiver once it acknowledge the sender.
+
+\paragraph{Receive}
+Wake up one sleeping process in the wait list, and copy it's mailbox to current process's mailbox. Since both mailbox has been allocated by kernel, page fault won't happen and no extra copy needed, which can speed up the IPC.
+
+\paragraph{Notification}
+Hardware interruptions can also be abstracted as IPC. When an interrupt occurs, we may trap from either user space or kernel space(maybe the scheduler). However, when we trap from the kernel scheduler and try to send the interrupt message to a running process, the scheduler may block and switch to scheduler, which is exactly itself. This case should be taken into consideration if we stick to the synchronous IPC. Thus, instead, we introduce the mechanism of  \emph{asynchronous notification} inspired by \textsc{seL4}\citep{sel4}. The send operation specifies a mask of a single bit decided by the interruption type, which is bitwise or into a notification field(a 32-bit special field in mailbox) of receiver process\footnote{\texttt{arch/i386/ipc.c}}.
+
+
+\section{Virtual File System}
+Instead of performing lower level operations, the virtual file system works with a universe wrapper over file layer. It should have a concept of file, including basic file operations and path routing. Those file operations are usually declared by VFS but implemented by the sub file system. The main job of the VFS is to keep track of all the mount points in the whole system and perform file system switching when the resolving path encounters a mount point. The switching alters the lower operations to read, write or remove a file. How to switch and what to switch, is the key of designing a VFS. Those set of operations to switch are sometimes called \emph{virtual operations}, which should be implemented by sub file system. We have already implemented a RAM disk file system as an example\footnote{\texttt{user/fs/initrd.c}}. Our VFS use the RAM disk file system once after booting, dynamically detect and mount existing disks into VFS\footnote{Not implemented.}. 
+
+
+\subsection{Virtual Node}
+From the perspective of VFS, a file is also called virtual node, since VFS doesn't really know it's type or contents. Still, we need to maintain some information used for identification, caching and operation, regardless of its type and contents. 
+
+\paragraph{Identification}
+A virtual node is identified by its dev and inum. The dev field is an identification for I/O subsystems, which can be a file system or pipe for example. The inum is an identification inside one I/O subsystem. 
+
+\paragraph{Caching}
+This is maintained by ref field, which will increment when the file is opened and decrement when closed. The existence of ref field allows VFS to check whether the file is still opened or not, which is useful for removing a file safely or uncaching an unreferred file. 
+
+\paragraph{Operation}
+Although VFS has made an abstraction for file operations, it still need to distinguish among different types of file systems, which may be determined by the dev field. This means we need to maintain a mapping between dev field and the relevant operation implementations.
+
+\subsection{Virtual Operations}
+The implementation of the basic operations differ among file systems and make up our glue layer between VFS and actual file systems\footnote{\texttt{user/fs/inode.h}}. In our VFS, each sub file system should provide their own implementations on the following operations.
+
+\paragraph{Allocate}
+Allocate a file of specific type(e.g. file, directory), and initialize its link to zero.
+\paragraph{Reclaim}
+Check the link of the file, discard it if its number of links is zero. This is called by VFS when there are no more in-memory reference to the file, which means we can safely remove it.
+\paragraph{Read/Write}
+Read or write some bytes into file starting from certain offset.
+\paragraph{Unlink}
+Decrement number of links of file by one.
+\paragraph{Dirlink}
+Create an entry with specific name which points to the linked file in the directory, also increment the number of links of linked file.
+\paragraph{Dirlookup}
+Search and return inum of the file with certain name in the directory.
+
+
+
+\bibliography{reference}
+\bibliographystyle{acl_natbib}
+
+\end{document}

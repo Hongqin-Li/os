@@ -2,8 +2,7 @@
 // http://www.intel.com/design/chipsets/datashts/29056601.pdf
 // See also picirq.c.
 
-#include <inc/types.h>
-#include <kern/console.h>
+#include <arch/i386/inc.h>
 #include <traps.h>
 
 #define IOAPIC  0xFEC00000   // Default physical address of IO APIC

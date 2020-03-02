@@ -26,6 +26,7 @@ void kernel_main() {
     proc_init();
 
     boot_aps();
+    sched_init();
     user_init();
     scheduler();
 }
@@ -63,6 +64,7 @@ mp_main()
     seg_init();
     idt_init();
     lapic_init();
+    sched_init();
 
 	xchg(&thiscpu()->status, CPU_STARTED); // tell boot_aps() we're up
     cprintf("CPU(idx=%d, apicid=%d) initialization finished.\n", cpuidx(), thiscpu()->apicid);

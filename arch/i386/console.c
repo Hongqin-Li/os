@@ -2,8 +2,8 @@
 // Input is from the keyboard or serial port.
 // Output is written to the screen and serial port.
 
+#include <kern/inc.h>
 #include <arch/i386/inc.h>
-#include <stdarg.h>
 
 static struct spinlock console_lock;
 
@@ -14,10 +14,9 @@ static uint16_t *crt = (uint16_t *)P2V(0xb8000);  // CGA memory
 #define COM1    0x3f8
 static int uart;    // is there a uart?
 
-static int panicked;
-
 static void 
-delay() {
+delay()
+{
 }
 
 void
@@ -45,7 +44,6 @@ uart_init(void) {
     inb(COM1+0);
     //FIXME
     //ioapic_enable(IRQ_COM1, 0);
-
 }
 
 static void
@@ -95,35 +93,13 @@ cgaputc(int c)
   crt[pos] = ' ' | 0x0700;
 }
 
-static void
-printint(int xx, int base, int sign)
-{
-    static char digits[] = "0123456789abcdef";
-    char buf[16];
-    int i;
-    uint x;
-
-    if(sign && (sign = xx < 0))
-        x = -xx;
-    else
-        x = xx;
-
-    i = 0;
-    do{
-        buf[i++] = digits[x % base];
-    }while((x /= base) != 0);
-
-    if(sign)
-        buf[i++] = '-';
-
-    while(--i >= 0)
-        consputc(buf[i]);
-}
-
 void
-consputc(int c) {
-    if (panicked) while(1);
-    spinlock_acquire(&console_lock);
+consputc(int c)
+{
+    if (panicked) 
+        while(1);
+
+    acquire(&console_lock);
 
     if (c == BACKSPACE) {
         uart_putc('\b'); 
@@ -134,81 +110,7 @@ consputc(int c) {
         uart_putc(c);
 
     //cgaputc(c);
-
-    spinlock_release(&console_lock);
-}
-
-void
-vprintfmt(void (*putch)(int), char *fmt, va_list ap)
-{
-    int i, c;
-    char *s;
-    for(i = 0; (c = fmt[i] & 0xff) != 0; i++) {
-        if(c != '%') {
-            putch(c);
-            continue;
-        }
-        if (!(c = fmt[++i] & 0xff))
-            break;
-
-        switch(c) {
-        case 'u':
-            printint(va_arg(ap, int), 10, 0);
-            break;
-        case 'd':
-            printint(va_arg(ap, int), 10, 1);
-            break;
-        case 'x':
-        case 'p':
-            printint(va_arg(ap, int), 16, 0);
-            break;
-        case 'c':
-            putch(va_arg(ap, int));
-            break;
-        case 's':
-            if((s = (char*)va_arg(ap, char *)) == 0)
-                s = "(null)";
-            for(; *s; s++)
-                putch(*s);
-            break;
-        case '%':
-            putch('%');
-            break;
-        default:
-            // Print unknown % sequence to draw attention.
-            putch('%');
-            putch(c);
-            break;
-        }
-    }
-}
-
-// Print to the console.
-void
-cprintf(char *fmt, ...)
-{
-    va_list ap;
-
-    va_start(ap, fmt);
-    vprintfmt(consputc, fmt, ap);
-    va_end(ap);
-}
-
-void
-panic(char *fmt, ...)
-{
-    va_list ap;
-
-    va_start(ap, fmt);
-    vprintfmt(consputc, fmt, ap);
-    va_end(ap);
-
-    trace(20);
-
-    cprintf("%s:%d: kernel panic.\n", __FILE__, __LINE__);
-    panicked = 1;
-    while(1)
-        ;
+    release(&console_lock);
 }
 
 void
